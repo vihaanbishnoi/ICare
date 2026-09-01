@@ -1,74 +1,94 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from threading import Lock
 
 import cv2
 import gradio as gr
-from fastrtc import WebRTC
+from fastrtc import VideoStreamHandler, WebRTC
 
 from icare_app.inference import FallDetectionSession, UnconfiguredBackend
+from icare_app.onnx_backend import PoseC3DONNXBackend
+from icare_app.pose import PosePreviewBackend
 from icare_app.reports import event_rows, write_report
 
 
-backend = UnconfiguredBackend()
+onnx_model_path = Path(
+    os.getenv("ICARE_POSEC3D_MODEL", "models/posec3d_fall.onnx")
+)
+if onnx_model_path.exists():
+    backend = PoseC3DONNXBackend(
+        model_path=onnx_model_path,
+        device=os.getenv("ICARE_POSE_DEVICE", "cpu"),
+        inference_width=int(os.getenv("ICARE_INFERENCE_WIDTH", "416")),
+    )
+elif os.getenv("ICARE_ENABLE_RTMPOSE", "0") == "1":
+    backend = PosePreviewBackend(
+        device=os.getenv("ICARE_POSE_DEVICE", "cpu"),
+        inference_width=int(os.getenv("ICARE_INFERENCE_WIDTH", "416")),
+    )
+else:
+    backend = UnconfiguredBackend()
 webcam_session = FallDetectionSession(backend)
 upload_lock = Lock()
 
 
-def format_summary(snapshot: dict) -> str:
-    probability = snapshot["latest_fall_probability"]
-    probability_text = "Unavailable" if probability is None else f"{probability:.1%}"
-    return f"""
-### {snapshot['state']}
+def result_card(snapshot: dict) -> str:
+    probability = snapshot["current_fall_probability"]
+    probability_text = "—" if probability is None else f"{probability:.1%}"
+    state = snapshot["state"]
+    colors = {
+        "Fall detected": "#ef4444",
+        "Checking possible fall": "#f59e0b",
+        "No fall detected": "#16a34a",
+        "Preparing": "#2563eb",
+        "Model not connected": "#64748b",
+    }
+    color = colors.get(state, "#64748b")
+    return (
+        f'<div style="background:{color};color:white;padding:14px 18px;'
+        f'border-radius:10px;font-size:24px;font-weight:800">{state.upper()}</div>'
+        f'<div style="font-size:17px;margin-top:12px">'
+        f'<b>Fall confidence:</b> {probability_text} &nbsp;&nbsp; '
+        f'<b>Incidents:</b> {len(snapshot["events"])}</div>'
+    )
 
-- **Backend:** {snapshot['backend']}
-- **Source:** {snapshot['source']}
-- **Frames received:** {snapshot['frames_seen']}
-- **Current activity:** {snapshot['latest_activity']}
-- **Current fall probability:** {probability_text}
-- **Maximum fall probability:** {snapshot['max_fall_probability']:.1%}
-- **Confirmation:** {snapshot['confirmation_progress']}
-- **Incident count:** {len(snapshot['events'])}
-"""
 
-
-def snapshot_outputs(session: FallDetectionSession, stem_prefix: str):
+def session_outputs(session: FallDetectionSession, report_name: str):
     snapshot = session.snapshot()
-    json_path, csv_path = write_report(snapshot, stem_prefix)
-    return format_summary(snapshot), event_rows(snapshot), snapshot, json_path, csv_path
+    json_path, csv_path = write_report(snapshot, report_name)
+    return result_card(snapshot), event_rows(snapshot), json_path, csv_path
 
 
 def process_webcam_frame(frame):
-    if frame is None:
-        return frame
-    return webcam_session.process(frame)
+    return frame if frame is None else webcam_session.process(frame)
 
 
 def reset_webcam():
     webcam_session.reset("webcam")
-    return snapshot_outputs(webcam_session, "webcam")
+    return session_outputs(webcam_session, "webcam_report")
 
 
-def inject_demo_webcam_event():
+def preview_report():
     webcam_session.inject_demo_event()
-    return snapshot_outputs(webcam_session, "webcam_demo")
+    return session_outputs(webcam_session, "webcam_preview_report")
 
 
-def refresh_webcam_report():
-    return snapshot_outputs(webcam_session, "webcam")
+def refresh_webcam():
+    return session_outputs(webcam_session, "webcam_report")
 
 
-def analyze_uploaded_video(video_path: str | None):
+def analyze_video(video_path: str | None):
     if not video_path:
-        raise gr.Error("Upload a video before selecting Analyze.")
+        raise gr.Error("Choose a video first.")
 
     with upload_lock:
         session = FallDetectionSession(backend)
-        session.reset(f"upload:{Path(video_path).name}")
+        session.reset(Path(video_path).name)
         capture = cv2.VideoCapture(video_path)
         if not capture.isOpened():
-            raise gr.Error("The uploaded video could not be opened.")
+            raise gr.Error("This video could not be opened.")
 
         fps = capture.get(cv2.CAP_PROP_FPS)
         fps = fps if fps and fps > 0 else 30.0
@@ -82,93 +102,105 @@ def analyze_uploaded_video(video_path: str | None):
             frame_number += 1
         capture.release()
 
-        outputs = snapshot_outputs(session, f"upload_{Path(video_path).stem}")
         if not backend.available:
-            gr.Warning("Video was read successfully, but model inference is disabled until trained weights are connected.")
-        return outputs
+            gr.Warning("Model weights have not been connected yet.")
+        return session_outputs(session, f"video_{Path(video_path).stem}")
 
 
-CSS = """
-.app-shell {max-width: 1180px; margin: 0 auto;}
-.model-warning {border-left: 5px solid #f59e0b; padding: 12px 16px; background: #fffbeb;}
-"""
+EVENT_HEADERS = ["Event", "Start", "End", "Duration", "Confidence"]
+EVENT_TYPES = ["number", "str", "str", "str", "str"]
 
 
-with gr.Blocks(title="ICare Fall Detection", css=CSS) as demo:
+with gr.Blocks(title="ICare") as demo:
     gr.Markdown(
         """
-        # ICare Fall Detection
-        Real-time webcam monitoring and recorded-video incident analysis.
-
-        <div class="model-warning"><strong>Development build:</strong> the interface is operational, but RTMPose and PoseC3D are not connected yet. It will never fabricate a prediction. Use the labelled demo-event button only to test reporting.</div>
+        # ICare
+        Fall detection for live camera and recorded video.
         """
     )
 
     with gr.Tabs():
-        with gr.Tab("Live webcam"):
-            gr.Markdown("Grant browser camera permission, then start the stream. Do not physically perform a fall for testing.")
+        with gr.Tab("Live camera"):
             with gr.Row():
                 with gr.Column(scale=3):
-                    webcam = WebRTC(label="Live camera")
-                    with gr.Row():
-                        reset_button = gr.Button("Reset monitoring")
-                        demo_event_button = gr.Button("Inject demo fall event", variant="secondary")
-                with gr.Column(scale=2):
-                    live_summary = gr.Markdown(format_summary(webcam_session.snapshot()))
-                    live_events = gr.Dataframe(
-                        headers=["Event", "Time (s)", "Confidence", "Activity", "Source"],
-                        datatype=["number", "number", "number", "str", "str"],
-                        interactive=False,
-                        label="Incident timeline",
+                    webcam = WebRTC(
+                        label="Camera",
+                        width=640,
+                        height=360,
+                        track_constraints={
+                            "facingMode": "user",
+                            "width": {"ideal": 640},
+                            "height": {"ideal": 360},
+                            "frameRate": {"ideal": 12, "max": 12},
+                        },
                     )
-                    live_json = gr.JSON(label="Current report")
+                    reset_button = gr.Button("Reset")
+                with gr.Column(scale=2):
+                    live_result = gr.Markdown(result_card(webcam_session.snapshot()))
+                    live_events = gr.Dataframe(
+                        headers=EVENT_HEADERS,
+                        datatype=EVENT_TYPES,
+                        interactive=False,
+                        label="Detected falls",
+                    )
                     with gr.Row():
-                        live_json_file = gr.File(label="Download JSON")
-                        live_csv_file = gr.File(label="Download CSV")
+                        live_json = gr.File(label="JSON report")
+                        live_csv = gr.File(label="CSV report")
+                    with gr.Accordion("Developer preview", open=False):
+                        gr.Markdown(
+                            "Adds a clearly marked simulated incident while model integration is pending."
+                        )
+                        preview_button = gr.Button("Preview report")
 
-            webcam.stream(fn=process_webcam_frame, inputs=[webcam], outputs=[webcam], time_limit=180)
+            webcam.stream(
+                fn=VideoStreamHandler(
+                    callable=process_webcam_frame,
+                    fps=12,
+                    skip_frames=True,
+                ),
+                inputs=[webcam],
+                outputs=[webcam],
+                time_limit=180,
+            )
             timer = gr.Timer(1.0)
             timer.tick(
-                fn=refresh_webcam_report,
-                outputs=[live_summary, live_events, live_json, live_json_file, live_csv_file],
+                fn=refresh_webcam,
+                outputs=[live_result, live_events, live_json, live_csv],
                 show_progress="hidden",
             )
             reset_button.click(
                 fn=reset_webcam,
-                outputs=[live_summary, live_events, live_json, live_json_file, live_csv_file],
+                outputs=[live_result, live_events, live_json, live_csv],
             )
-            demo_event_button.click(
-                fn=inject_demo_webcam_event,
-                outputs=[live_summary, live_events, live_json, live_json_file, live_csv_file],
+            preview_button.click(
+                fn=preview_report,
+                outputs=[live_result, live_events, live_json, live_csv],
             )
 
         with gr.Tab("Upload video"):
-            gr.Markdown("Upload an MP4 or other OpenCV-readable video. The final model will produce timestamped incidents here.")
             with gr.Row():
-                upload_video = gr.Video(label="Video to analyze", sources=["upload"])
+                upload = gr.Video(label="Video", sources=["upload"])
                 with gr.Column():
-                    analyze_button = gr.Button("Analyze video", variant="primary")
-                    upload_summary = gr.Markdown("No video analyzed yet.")
-            upload_events = gr.Dataframe(
-                headers=["Event", "Time (s)", "Confidence", "Activity", "Source"],
-                datatype=["number", "number", "number", "str", "str"],
-                interactive=False,
-                label="Incident timeline",
-            )
-            upload_json = gr.JSON(label="Analysis report")
-            with gr.Row():
-                upload_json_file = gr.File(label="Download JSON")
-                upload_csv_file = gr.File(label="Download CSV")
+                    analyze_button = gr.Button("Analyze", variant="primary")
+                    upload_result = gr.Markdown("## Ready\n\nChoose a video to begin.")
+                    upload_events = gr.Dataframe(
+                        headers=EVENT_HEADERS,
+                        datatype=EVENT_TYPES,
+                        interactive=False,
+                        label="Detected falls",
+                    )
+                    with gr.Row():
+                        upload_json = gr.File(label="JSON report")
+                        upload_csv = gr.File(label="CSV report")
+
             analyze_button.click(
-                fn=analyze_uploaded_video,
-                inputs=[upload_video],
-                outputs=[upload_summary, upload_events, upload_json, upload_json_file, upload_csv_file],
+                fn=analyze_video,
+                inputs=[upload],
+                outputs=[upload_result, upload_events, upload_json, upload_csv],
             )
 
     gr.Markdown(
-        """
-        **Research prototype only.** This application is not a medical device or emergency service. A production elder-care system requires broader validation, privacy controls, monitoring, and a reliable alert-delivery path.
-        """
+        "<small>Research prototype — not a medical device or emergency service.</small>"
     )
 
 

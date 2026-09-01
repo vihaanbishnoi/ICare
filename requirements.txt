@@ -1,4 +1,7 @@
 gradio==5.50.0
 fastrtc==0.0.34
 numpy>=1.26,<3
-opencv-python-headless>=4.9,<5
+opencv-python>=4.9,<5
+opencv-contrib-python>=4.9,<5
+onnxruntime>=1.18,<2
+rtmlib>=0.0.13,<1

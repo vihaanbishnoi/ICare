@@ -41,3 +41,17 @@ Subject ID	Activity ID	Trial	Device ID
 6	10	2	14
 8	11	2, 3	all
 9	all	all	2
+
+Dataset:
+FallVision gives good variety in people, viewpoints, and fall types
+but its camera setup is not perfectly representative of fixed elder-care surveillance cameras
+
+This dataset contain 24 scenarios recorded with 8 IP video cameras. The first 22 first scenarios contain a fall and confounding events, the last 2 ones contain only confounding events.
+
+folder	direct_files	direct_videos	direct_csvs
+0	Fall	0	0	0
+1	Fall/Keypoints_CSV	3140	0	3140
+2	Fall/Raw_Video	3140	3140	0
+3	No_Fall	0	0	0
+4	No_Fall/Keypoints_CSV	3848	0	3848
+5	No_Fall/Raw_Video	3848	3848	0

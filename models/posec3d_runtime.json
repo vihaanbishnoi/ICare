@@ -1,0 +1,13 @@
+{
+  "architecture": "PoseC3D SlowOnly-R50",
+  "classes": ["No Fall", "Fall"],
+  "clip_len": 48,
+  "window_seconds": 4.0,
+  "heatmap_size": 64,
+  "num_keypoints": 17,
+  "sigma": 0.6,
+  "use_keypoint_score": true,
+  "checkpoint": "../best_acc_top1_epoch_9.pth",
+  "onnx_model": "posec3d_fall.onnx",
+  "fall_class_index": 1
+}

@@ -6,27 +6,30 @@ from pathlib import Path
 
 
 REPORT_ROOT = Path("artifacts/reports")
+EVENT_FIELDS = [
+    "event_id",
+    "start_seconds",
+    "end_seconds",
+    "duration_seconds",
+    "peak_confidence",
+    "source",
+    "created_at_utc",
+]
 
 
 def write_report(snapshot: dict, report_stem: str) -> tuple[str, str]:
     REPORT_ROOT.mkdir(parents=True, exist_ok=True)
-    safe_stem = "".join(character for character in report_stem if character.isalnum() or character in "-_")
+    safe_stem = "".join(
+        character
+        for character in report_stem
+        if character.isalnum() or character in "-_"
+    )
     json_path = REPORT_ROOT / f"{safe_stem}.json"
     csv_path = REPORT_ROOT / f"{safe_stem}.csv"
-
     json_path.write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
 
-    fields = [
-        "event_id",
-        "timestamp_seconds",
-        "confidence",
-        "activity_id",
-        "activity_name",
-        "source",
-        "created_at_utc",
-    ]
     with csv_path.open("w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=fields)
+        writer = csv.DictWriter(file, fieldnames=EVENT_FIELDS)
         writer.writeheader()
         writer.writerows(snapshot.get("events", []))
 
@@ -34,14 +37,23 @@ def write_report(snapshot: dict, report_stem: str) -> tuple[str, str]:
 
 
 def event_rows(snapshot: dict) -> list[list]:
-    return [
-        [
-            event["event_id"],
-            event["timestamp_seconds"],
-            event["confidence"],
-            event["activity_name"],
-            event["source"],
-        ]
-        for event in snapshot.get("events", [])
-    ]
+    rows = []
+    for event in snapshot.get("events", []):
+        end = event["end_seconds"]
+        rows.append(
+            [
+                event["event_id"],
+                _clock(event["start_seconds"]),
+                "Ongoing" if end is None else _clock(end),
+                "—"
+                if event["duration_seconds"] is None
+                else f"{event['duration_seconds']:.1f} s",
+                f"{event['peak_confidence']:.1%}",
+            ]
+        )
+    return rows
 
+
+def _clock(seconds: float) -> str:
+    minutes, remaining = divmod(float(seconds), 60)
+    return f"{int(minutes):02d}:{remaining:04.1f}"

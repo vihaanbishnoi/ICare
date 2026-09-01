@@ -1,6 +1,48 @@
+# Python environments
 .venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Python caches and tooling
 __pycache__/
 *.py[cod]
-artifacts/
-.gradio/
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
+# IDE and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Gradio/runtime output
+.gradio/
+artifacts/
+reports/
+*.log
+
+# Training output and intermediate checkpoints
+work_dirs/
+work_dir/
+posec3d_fall/work_dir/
+*.pth
+*.pt
+*.ckpt
+
+# Kaggle/Jupyter transient files
+.ipynb_checkpoints/
+kaggle/working/
+
+# Local media used for testing
+uploads/
+test_videos/
+*.webm
+
+# Keep the deployable ONNX model and its runtime configuration in models/.
