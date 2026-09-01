@@ -107,8 +107,8 @@ def analyze_video(video_path: str | None):
         return session_outputs(session, f"video_{Path(video_path).stem}")
 
 
-EVENT_HEADERS = ["Event", "Start", "End", "Duration", "Confidence"]
-EVENT_TYPES = ["number", "str", "str", "str", "str"]
+EVENT_HEADERS = ["Event", "Detected at", "Confidence"]
+EVENT_TYPES = ["number", "str", "str"]
 
 
 with gr.Blocks(title="ICare") as demo:

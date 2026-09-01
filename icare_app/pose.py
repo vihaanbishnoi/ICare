@@ -45,7 +45,7 @@ class RTMPoseExtractor:
         device: str = "cpu",
         detection_threshold: float = 0.35,
         keypoint_threshold: float = 0.30,
-        detection_frequency: int = 5,
+        detection_frequency: int = 3,
     ) -> None:
         try:
             from rtmlib import RTMPose, YOLOX
@@ -186,6 +186,7 @@ class PosePreviewBackend:
         self.inference_width = inference_width
         self.sequence_buffer = PoseSequenceBuffer()
         self.latest_pose: PoseFrame | None = None
+        self.latest_error: str | None = None
         self._condition = Condition()
         self._pending: tuple[np.ndarray, float, int] | None = None
         self._generation = 0
@@ -197,6 +198,7 @@ class PosePreviewBackend:
             self._generation += 1
             self._pending = None
             self.latest_pose = None
+            self.latest_error = None
             self.sequence_buffer.clear()
             self.extractor.reset()
 
@@ -224,7 +226,26 @@ class PosePreviewBackend:
     def annotate_frame(self, frame_rgb: np.ndarray) -> np.ndarray:
         with self._condition:
             pose = self.latest_pose
-        return self.extractor.draw(frame_rgb, pose)
+            pose_count = self.sequence_buffer.pose_count
+            coverage = self.sequence_buffer.coverage_seconds
+            error = self.latest_error
+        output = self.extractor.draw(frame_rgb, pose)
+        message = (
+            f"Pose buffer: {pose_count}/6 | {coverage:.1f}/2.0 s"
+            if error is None
+            else f"Inference error: {error[:70]}"
+        )
+        cv2.putText(
+            output,
+            message,
+            (16, max(124, output.shape[0] - 18)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+        return output
 
     def on_pose_ready(self, pose: PoseFrame) -> None:
         """Extension point for the PoseC3D backend."""
@@ -236,11 +257,23 @@ class PosePreviewBackend:
                 self._condition.wait_for(lambda: self._pending is not None)
                 frame_rgb, timestamp_seconds, generation = self._pending
                 self._pending = None
-            pose = self.extractor.extract(frame_rgb, timestamp_seconds)
+            try:
+                pose = self.extractor.extract(frame_rgb, timestamp_seconds)
+            except Exception as exc:
+                with self._condition:
+                    if generation == self._generation:
+                        self.latest_error = f"{type(exc).__name__}: {exc}"
+                continue
             with self._condition:
                 if generation == self._generation:
+                    self.latest_error = None
                     self.latest_pose = pose
                     if pose is not None:
                         self.sequence_buffer.append(pose)
             if pose is not None and generation == self._generation:
-                self.on_pose_ready(pose)
+                try:
+                    self.on_pose_ready(pose)
+                except Exception as exc:
+                    with self._condition:
+                        if generation == self._generation:
+                            self.latest_error = f"{type(exc).__name__}: {exc}"

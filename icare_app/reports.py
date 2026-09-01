@@ -8,10 +8,8 @@ from pathlib import Path
 REPORT_ROOT = Path("artifacts/reports")
 EVENT_FIELDS = [
     "event_id",
-    "start_seconds",
-    "end_seconds",
-    "duration_seconds",
-    "peak_confidence",
+    "detected_at_seconds",
+    "confidence",
     "source",
     "created_at_utc",
 ]
@@ -39,16 +37,11 @@ def write_report(snapshot: dict, report_stem: str) -> tuple[str, str]:
 def event_rows(snapshot: dict) -> list[list]:
     rows = []
     for event in snapshot.get("events", []):
-        end = event["end_seconds"]
         rows.append(
             [
                 event["event_id"],
-                _clock(event["start_seconds"]),
-                "Ongoing" if end is None else _clock(end),
-                "—"
-                if event["duration_seconds"] is None
-                else f"{event['duration_seconds']:.1f} s",
-                f"{event['peak_confidence']:.1%}",
+                _clock(event["detected_at_seconds"]),
+                f"{event['confidence']:.1%}",
             ]
         )
     return rows

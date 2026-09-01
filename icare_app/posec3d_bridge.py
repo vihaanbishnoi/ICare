@@ -25,11 +25,13 @@ class PoseSequenceBuffer:
         self,
         window_seconds: float = 4.0,
         clip_len: int = 48,
-        minimum_poses: int = 8,
+        minimum_poses: int = 6,
+        minimum_coverage_seconds: float = 2.0,
     ) -> None:
         self.window_seconds = float(window_seconds)
         self.clip_len = int(clip_len)
         self.minimum_poses = int(minimum_poses)
+        self.minimum_coverage_seconds = float(minimum_coverage_seconds)
         self._poses: deque[PoseFrame] = deque()
 
     def clear(self) -> None:
@@ -48,11 +50,18 @@ class PoseSequenceBuffer:
         return len(self._poses)
 
     @property
+    def coverage_seconds(self) -> float:
+        if len(self._poses) < 2:
+            return 0.0
+        return float(
+            self._poses[-1].timestamp_seconds - self._poses[0].timestamp_seconds
+        )
+
+    @property
     def ready(self) -> bool:
         if len(self._poses) < self.minimum_poses:
             return False
-        covered = self._poses[-1].timestamp_seconds - self._poses[0].timestamp_seconds
-        return covered >= self.window_seconds * 0.75
+        return self.coverage_seconds >= self.minimum_coverage_seconds
 
     def build(self) -> PoseC3DInput | None:
         if not self.ready:
