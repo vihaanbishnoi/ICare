@@ -4,6 +4,12 @@ ICare is a portfolio research prototype for detecting falls from a live webcam o
 
 > **Safety:** This is not a medical device, emergency service, or production monitoring system. Do not perform real falls on a hard surface when testing.
 
+## Demo video
+
+[▶ Watch the four-second fall-detection sample](demo_videos/Fall_Detection.mp4)
+
+This short video is included only to demonstrate the **Upload video** workflow. It is not automatically added to the training dataset and was not used to calculate the evaluation results below.
+
 ## Pipeline
 
 ```text
@@ -35,6 +41,19 @@ The binary PoseC3D model was fine-tuned from an NTU60-pretrained SlowOnly-R50 Po
 | Final fall samples | 3,059 |
 | Final no-fall samples | 3,707 |
 | Unique derived groups | 4,786 |
+
+The source dataset is not stored in this GitHub repository because it contains thousands of videos and must be obtained under its original distribution terms. The validation notebook expects the following structure:
+
+```text
+Fall/
+  Raw_Video/
+  Keypoints_CSV/
+No_Fall/
+  Raw_Video/
+  Keypoints_CSV/
+```
+
+Each training video must have a matching, frame-aligned COCO-17 keypoint CSV. Supported dataset video extensions are `.mp4`, `.avi`, `.mov`, `.mkv`, `.mpeg`, `.mpg`, and `.m4v`. Adding a video to `demo_videos/` or analyzing it in the app does not retrain the model; new training samples must be validated, included in regenerated metadata, and used in a new training run.
 
 The group-aware split contained 4,742 training, 1,013 validation, and 1,011 test samples. It prevents derived duplicates/groups from crossing splits. Reliable subject IDs were not available, so this result must not be described as a true subject-independent evaluation.
 
