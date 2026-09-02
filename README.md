@@ -6,7 +6,9 @@ ICare is a portfolio research prototype for detecting falls from a live webcam o
 
 ## Demo video
 
-[▶ Watch the four-second fall-detection sample](demo_videos/Fall_Detection.mp4)
+[![Animated fall-detection demonstration](demo_videos/Fall_Detection.gif)](demo_videos/Fall_Detection.mp4)
+
+Click the animated preview to open the original MP4.
 
 This short video is included only to demonstrate the **Upload video** workflow. It is not automatically added to the training dataset and was not used to calculate the evaluation results below.
 
