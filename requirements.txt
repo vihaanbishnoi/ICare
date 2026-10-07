@@ -1,7 +1,9 @@
-gradio==5.50.0
-fastrtc==0.0.34
+# Retained model/evaluation baseline. Product API/frontend dependencies are added
+# by their owners after implementing the documented stack.
 numpy>=1.26,<3
 opencv-python>=4.9,<5
 opencv-contrib-python>=4.9,<5
 onnxruntime>=1.18,<2
 rtmlib>=0.0.13,<1
+psutil>=5.9,<8
+matplotlib>=3.8,<4

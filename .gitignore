@@ -15,6 +15,7 @@ __pycache__/
 .ruff_cache/
 .coverage
 htmlcov/
+.cache/
 
 # IDE and operating-system files
 .vscode/
@@ -27,6 +28,31 @@ Thumbs.db
 artifacts/
 reports/
 *.log
+
+# Generated charts, presentation exports, and local build scratch space
+.chart-data-*/
+.codex-build/
+.codex-finalizer/
+output/
+build/
+dist/
+*.egg-info/
+
+# Local credentials and private keys (share only sanitized examples)
+.aws/
+.ssh/
+secrets/
+secrets.*
+credentials.json
+credentials.*.json
+*service-account*.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+id_rsa
+id_ed25519
 
 # Training output and intermediate checkpoints
 work_dirs/
@@ -43,6 +69,7 @@ kaggle/working/
 # Local media used for testing
 uploads/
 test_videos/
+/data/
 *.webm
 
 # Keep the deployable ONNX model and its runtime configuration in models/.

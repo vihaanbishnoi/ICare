@@ -1,0 +1,4 @@
+# Separate test-only environment; do not install beside runtime OpenCV packages.
+# Unit tests require no webcam UI, model downloads, or training framework.
+numpy>=1.26,<3
+opencv-python-headless>=4.9,<5

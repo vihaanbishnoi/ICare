@@ -181,12 +181,18 @@ class PosePreviewBackend:
 
     def __init__(self, device: str = "cpu", inference_width: int = 640) -> None:
         from icare_app.posec3d_bridge import PoseSequenceBuffer
+        from icare_app.pose_signals import PoseSignalEstimator
 
         self.extractor = RTMPoseExtractor(device=device)
         self.inference_width = inference_width
         self.sequence_buffer = PoseSequenceBuffer()
+        self.signal_estimator = PoseSignalEstimator()
         self.latest_pose: PoseFrame | None = None
+        self.latest_signals = None
         self.latest_error: str | None = None
+        self._pose_frames_processed = 0
+        self._pose_frames_successful = 0
+        self._pose_inference_ms_total = 0.0
         self._condition = Condition()
         self._pending: tuple[np.ndarray, float, int] | None = None
         self._generation = 0
@@ -198,8 +204,13 @@ class PosePreviewBackend:
             self._generation += 1
             self._pending = None
             self.latest_pose = None
+            self.latest_signals = None
             self.latest_error = None
+            self._pose_frames_processed = 0
+            self._pose_frames_successful = 0
+            self._pose_inference_ms_total = 0.0
             self.sequence_buffer.clear()
+            self.signal_estimator.reset()
             self.extractor.reset()
 
     def process_frame(self, frame_rgb: np.ndarray, timestamp_seconds: float):
@@ -229,6 +240,7 @@ class PosePreviewBackend:
             pose_count = self.sequence_buffer.pose_count
             coverage = self.sequence_buffer.coverage_seconds
             error = self.latest_error
+            signals = self.latest_signals
         output = self.extractor.draw(frame_rgb, pose)
         message = (
             f"Pose buffer: {pose_count}/6 | {coverage:.1f}/2.0 s"
@@ -245,7 +257,41 @@ class PosePreviewBackend:
             2,
             cv2.LINE_AA,
         )
+        if signals is not None:
+            cv2.putText(
+                output,
+                f"Urgency {signals.urgency:.2f} | Reliability {signals.reliability:.2f}",
+                (16, max(148, output.shape[0] - 42)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
         return output
+
+    def runtime_snapshot(self) -> dict:
+        with self._condition:
+            processed = self._pose_frames_processed
+            successful = self._pose_frames_successful
+            latest = self.latest_signals
+            return {
+                "pose_worker_frames": processed,
+                "successful_pose_frames": successful,
+                "mean_pose_inference_ms": (
+                    round(self._pose_inference_ms_total / successful, 6)
+                    if successful
+                    else None
+                ),
+                "latest_urgency": (
+                    round(float(latest.urgency), 6) if latest is not None else None
+                ),
+                "latest_reliability": (
+                    round(float(latest.reliability), 6)
+                    if latest is not None
+                    else None
+                ),
+            }
 
     def on_pose_ready(self, pose: PoseFrame) -> None:
         """Extension point for the PoseC3D backend."""
@@ -264,11 +310,16 @@ class PosePreviewBackend:
                     if generation == self._generation:
                         self.latest_error = f"{type(exc).__name__}: {exc}"
                 continue
+            signals = self.signal_estimator.update(pose) if pose is not None else None
             with self._condition:
                 if generation == self._generation:
+                    self._pose_frames_processed += 1
                     self.latest_error = None
                     self.latest_pose = pose
+                    self.latest_signals = signals
                     if pose is not None:
+                        self._pose_frames_successful += 1
+                        self._pose_inference_ms_total += float(pose.inference_ms)
                         self.sequence_buffer.append(pose)
             if pose is not None and generation == self._generation:
                 try:

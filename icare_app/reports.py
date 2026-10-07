@@ -12,6 +12,19 @@ EVENT_FIELDS = [
     "confidence",
     "source",
     "created_at_utc",
+    "fall_onset_seconds",
+    "alert_latency_seconds",
+]
+INFERENCE_FIELDS = [
+    "timestamp_seconds",
+    "fall_probability",
+    "inference_ms",
+    "window_start_seconds",
+    "source_pose_count",
+    "urgency",
+    "reliability",
+    "process_cpu_percent",
+    "process_rss_mb",
 ]
 
 
@@ -24,12 +37,21 @@ def write_report(snapshot: dict, report_stem: str) -> tuple[str, str]:
     )
     json_path = REPORT_ROOT / f"{safe_stem}.json"
     csv_path = REPORT_ROOT / f"{safe_stem}.csv"
-    json_path.write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
+    inference_csv_path = REPORT_ROOT / f"{safe_stem}_inference.csv"
+
+    report_snapshot = dict(snapshot)
+    report_snapshot["inference_log_csv"] = str(inference_csv_path.resolve())
+    json_path.write_text(json.dumps(report_snapshot, indent=2), encoding="utf-8")
 
     with csv_path.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=EVENT_FIELDS)
         writer.writeheader()
         writer.writerows(snapshot.get("events", []))
+
+    with inference_csv_path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=INFERENCE_FIELDS)
+        writer.writeheader()
+        writer.writerows(snapshot.get("inference_records", []))
 
     return str(json_path.resolve()), str(csv_path.resolve())
 

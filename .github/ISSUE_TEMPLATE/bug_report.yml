@@ -1,0 +1,22 @@
+name: Bug report
+description: A reproducible application or repository failure
+title: "[Bug] "
+body:
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the command or workflow and sanitized sample inputs.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and evidence
+      description: OS, Python version, browser if relevant, commit, and sanitized logs. Never attach keys or private media.
