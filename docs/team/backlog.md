@@ -5,10 +5,11 @@ that issues or assignments have been published. Roles remain numbered.
 
 ## Person 1 Inference engine
 
-- [ ] P1A Verify model loading, class order, preprocessing, and missing-model errors.
-- [ ] P1B Deliver deterministic offline processing with final-output completion.
-- [ ] P1C Expose timestamps, probabilities, poses, and measured runtime fields.
+- [x] P1A Verify model loading, class order, preprocessing, and missing-model errors.
+- [x] P1B Deliver deterministic offline processing with final-output completion.
+- [x] P1C Expose timestamps, probabilities, poses, and measured runtime fields.
 - [ ] P1D Test independent consumers, reset, no person, and completion with Person 4.
+  (Synthetic-adapter tests done; real-clip run and Person 4 review pending.)
 
 Reuse model operations; do not turn the old Gradio callbacks into the engine.
 

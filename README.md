@@ -177,7 +177,8 @@ evaluation/                  Person 4 evaluation/benchmark boundary, README only
 configs/                     Person 5 future product configuration, README only
 icare_app/                   existing reusable runtime and prototype references
   inference.py               probability, session, and incident logic
-  pose.py                    YOLOX + RTMPose latest-frame worker
+  engine.py, engine_model.py v1 offline engine for the API (see icare_app/ENGINE.md)
+  pose.py                    YOLOX + RTMPose operations and legacy live worker
   posec3d_bridge.py           temporal resampling and heatmaps
   onnx_backend.py            PoseC3D ONNX Runtime backend
   pose_signals.py             motion urgency and pose reliability
@@ -236,7 +237,8 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Person 1 supplies an explicit engine entry point; Persons 2/3 implement API/UI
+Person 1's engine entry point is `icare_app.engine.load_engine` ([guide](icare_app/ENGINE.md));
+Persons 2/3 implement API/UI
 startup; Person 5 verifies and documents combined/container startup. Existing
 audit/evaluation commands still work when their required data are available.
 The non-secret `.env.example` lists planned engine settings; loading/wiring
