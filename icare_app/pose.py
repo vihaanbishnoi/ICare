@@ -81,6 +81,17 @@ class RTMPoseExtractor:
         self.primary_box = None
         self.detected_people = 0
 
+    def fork(self) -> "RTMPoseExtractor":
+        """Return an extractor sharing the loaded models but with fresh tracking state.
+
+        Each offline job forks its own extractor so detector box reuse and frame
+        counters can never carry from one clip to another.
+        """
+        clone = object.__new__(RTMPoseExtractor)
+        clone.__dict__.update(self.__dict__)
+        clone.reset()
+        return clone
+
     def extract(
         self, frame_rgb: np.ndarray, timestamp_seconds: float
     ) -> PoseFrame | None:

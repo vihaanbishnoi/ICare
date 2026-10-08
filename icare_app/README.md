@@ -6,13 +6,16 @@ Use [component decisions](../docs/project/component_decisions.md) and the
 
 | Module | Use | Part |
 | --- | --- | --- |
-| pose.py | Reusable detection/pose operations; optional live worker reference | Person 1 |
+| engine.py, engine_model.py | **v1 offline engine** (`load_engine`, `analyze_video`); see [ENGINE.md](ENGINE.md) | Person 1 |
+| pose.py | Reusable detection/pose operations; live worker is legacy reference | Person 1 |
 | onnx_backend.py | Existing ONNX execution coupled to state that needs separation | Person 1 |
 | posec3d_bridge.py | Temporal resampling and heatmaps | Person 1 |
 | pose_signals.py | Urgency/reliability instrumentation | Person 1 with Person 4 validation |
 | inference.py | Probability/event data and rules; not ready API orchestration | Person 2 |
 | reports.py | Field meanings/export reference; not private job storage | Person 2 |
 | subject_audit.py | Subject-overlap evidence | Person 4 |
+
+Uploaded clips go through `engine.py`, never the live worker below.
 
 The simulated-event helper and frame-overlay/session methods in the retained
 reference must not be used as public model results. Person 2 starts orchestration

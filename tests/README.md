@@ -10,8 +10,9 @@ environment. Nine existing synthetic tests are retained unchanged.
 | test_pose_signals.py | Persons 1 and 4 |
 | test_subject_audit.py | Person 4 |
 | test_reports.py | Person 2 |
+| test_engine.py | Person 1 (engine lifecycle; also runs the engine inside the API) |
 
-Person 1 adds engine/lifecycle/completion checks. Person 2 adds job/isolation/
+Person 1 added engine/lifecycle/completion checks (synthetic adapters; real-ONNX cases skip without onnxruntime). Person 2 adds job/isolation/
 ownership/incident/API integration checks. Person 3 adds browser journeys/loading/
 errors/mobile checks. Person 4 verifies real-model metrics and robustness.
 Person 5 connects these to CI/staging and validates restart/rollback/limits.

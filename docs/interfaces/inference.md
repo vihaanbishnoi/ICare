@@ -1,7 +1,9 @@
 # Inference contract version 1
 
 Person 1 implements the engine; Person 2 supplies isolated jobs; Person 4 reviews
-measurement meaning. This is a specification, not a newly implemented module.
+measurement meaning. Implemented in icare_app/engine.py (details, error codes and
+decisions: [icare_app/ENGINE.md](../../icare_app/ENGINE.md)); real pose models on a
+real clip are not yet verified.
 
 ## Engine operations
 
@@ -14,8 +16,7 @@ load_engine(config) returning an engine with ready, analyze_video, and close.
 analyze_video takes a validated video path plus on_pose, on_prediction,
 on_progress callbacks and a job-local cancellation signal named cancel_event.
 Return the final summary only after all selected frames and pending temporal
-predictions are handled. These names are an implementation contract, not code
-already supplied. Person 2 injects this engine without HTTP or GUI imports.
+predictions are handled. These names are the implemented contract. Person 2 injects this engine without HTTP or GUI imports.
 
 First release uses source-frame dimensions and COCO-17 coordinates. Offline
 sampling defaults to 6 poses per source second; select reproducibly using video
