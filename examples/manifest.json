@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "description": "Approved demonstration asset provenance and baseline annotations for Person 4 evaluation",
+  "clips": [
+    {
+      "id": "fall_example_01",
+      "filename": "examples/fall_example_01.mp4",
+      "label": "Fall",
+      "expected_outcome": "Fall detected",
+      "fall_onset_sec": 2.5,
+      "duration_sec": 6.0,
+      "source_provenance": "Approved synthetic/staged demonstration clip",
+      "rights_status": "Approved for public demo release",
+      "recommended_use": "Public demo Fall Example button"
+    },
+    {
+      "id": "normal_example_01",
+      "filename": "examples/normal_example_01.mp4",
+      "label": "No Fall",
+      "expected_outcome": "No fall detected",
+      "fall_onset_sec": null,
+      "duration_sec": 8.0,
+      "source_provenance": "Approved synthetic/staged normal activity demonstration clip",
+      "rights_status": "Approved for public demo release",
+      "recommended_use": "Public demo Normal Activity button"
+    }
+  ]
+}
