@@ -2,3 +2,7 @@
 # Unit tests require no webcam UI, model downloads, or training framework.
 numpy>=1.26,<3
 opencv-python-headless>=4.9,<5
+# API tests (Person 2): FastAPI app with test adapters, no model required.
+fastapi==0.142.4
+python-multipart==0.0.32
+httpx==0.28.1

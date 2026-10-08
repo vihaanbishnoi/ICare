@@ -1,0 +1,4 @@
+# Person 2 API service. Install alongside requirements.txt for the real engine.
+fastapi==0.142.4
+uvicorn==0.54.0
+python-multipart==0.0.32
