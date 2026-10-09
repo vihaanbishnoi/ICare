@@ -220,23 +220,33 @@ class BenchmarkHarness:
                     first_incident_ts = pred.get("timestamp_seconds")
 
         start_time = time.perf_counter()
-        summary = engine.analyze_video(
-            annotation.filename,
-            on_pose=poses.append,
-            on_prediction=on_prediction,
-            on_progress=lambda p: None,
-            cancel_event=threading.Event(),
-        )
-        elapsed = time.perf_counter() - start_time
+        error_code: Optional[str] = None
+        try:
+            summary = engine.analyze_video(
+                annotation.filename,
+                on_pose=poses.append,
+                on_prediction=on_prediction,
+                on_progress=lambda p: None,
+                cancel_event=threading.Event(),
+            )
+            elapsed = time.perf_counter() - start_time
+            metrics = summary.get("metrics", {})
+        except Exception as exc:
+            elapsed = time.perf_counter() - start_time
+            error_code = getattr(exc, "code", type(exc).__name__)
+            summary = {}
+            metrics = {}
 
         max_prob = max((p.get("fall_probability", 0.0) for p in predictions), default=0.0)
-        pred_label = "Fall" if incidents > 0 else "No Fall"
+        if error_code is not None:
+            pred_label = f"Failed ({error_code})"
+        else:
+            pred_label = "fall" if incidents > 0 else "no_fall"
 
         lat_sec: Optional[float] = None
         if incidents > 0 and first_incident_ts is not None and annotation.fall_onset_seconds is not None:
             lat_sec = first_incident_ts - annotation.fall_onset_seconds
 
-        metrics = summary.get("metrics", {})
         fps = metrics.get("processed_frames_per_second")
         frames_proc = metrics.get("sampled_frames", len(poses))
 

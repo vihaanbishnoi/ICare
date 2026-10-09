@@ -27,7 +27,7 @@ This report documents the evaluation limitations, dataset boundaries, hardware c
 
 ### 2.2 CPU vs GPU Hardware Execution Boundary
 - **Current Finding**: The ONNX Runtime backend (`icare_app/onnx_backend.py`) uses the CPU execution provider (`device="cpu"`).
-- **Impact**: Processing throughput runs at $\sim 12.0$ FPS on standard CPU hardware. GPU utilization is explicitly recorded as **Not Applicable (N/A)**.
+- **Impact**: Real processing throughput (FPS) and resource utilization will be measured when public video clips are processed through `icare_app.engine`. GPU utilization is explicitly recorded as **Not Applicable (N/A)**.
 
 ### 2.3 Live Domain & Camera Angle Gap
 - **Current Finding**: Model training utilized fixed-camera indoor video datasets.

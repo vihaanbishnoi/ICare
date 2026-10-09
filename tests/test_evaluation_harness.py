@@ -147,7 +147,7 @@ class BenchmarkHarnessTests(unittest.TestCase):
         annot = ClipAnnotation(clip_id="fall_test", filename=Path("test.mp4"), true_label="Fall", fall_onset_seconds=1.0)
         rec = harness.run_engine_clip(adapter, annot)
         self.assertEqual(rec.incidents_detected, 1)
-        self.assertEqual(rec.predicted_label, "Fall")
+        self.assertEqual(rec.predicted_label.lower(), "fall")
         self.assertAlmostEqual(rec.alert_latency_seconds, 0.75)  # first incident at t=1.75, onset=1.0
 
 

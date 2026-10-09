@@ -1,14 +1,12 @@
 {
   "version": "1.0",
   "status": "pending_approved_media",
-  "catalog_file": "examples/catalog.json",
-  "description": "Manifest pointing to API examples catalog. Provenance status remains pending until approved assets are added.",
+  "description": "Manifest listing target evaluation clips. Status is pending until approved public media files are added.",
   "clips": [
     {
       "id": "fall_example_01",
       "filename": "examples/fall_example_01.mp4",
-      "label": "Fall",
-      "expected_outcome": "Fall",
+      "expected_outcome": "fall",
       "fall_onset_seconds": null,
       "duration_seconds": null,
       "provenance_status": "pending",
@@ -17,8 +15,7 @@
     {
       "id": "normal_example_01",
       "filename": "examples/normal_example_01.mp4",
-      "label": "No Fall",
-      "expected_outcome": "No Fall",
+      "expected_outcome": "no_fall",
       "fall_onset_seconds": null,
       "duration_seconds": null,
       "provenance_status": "pending",

@@ -1,7 +1,7 @@
 """Evidence generation and plotting suite for ICare Person 4 Evaluation.
 
 Generates reproducible evaluation evidence summaries, confusion matrices,
-robustness comparisons, failure case logs, and plots into artifacts/evaluation/.
+robustness comparison protocols, and sanitized logs into artifacts/evaluation/.
 """
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ def generate_evaluation_artifacts(output_dir: Path = ARTIFACTS_DIR) -> Dict[str,
 
     # 2. Confusion matrix artifact
     confusion_matrix = {
-        "labels": ["No Fall", "Fall"],
+        "labels": ["no_fall", "fall"],
         "matrix": [
             [541, 13],  # [TN, FP]
             [24, 433]   # [FN, TP]
@@ -81,24 +81,22 @@ def generate_evaluation_artifacts(output_dir: Path = ARTIFACTS_DIR) -> Dict[str,
     # 3. Robustness evaluation protocol artifact
     robustness_protocol = {
         "protocol_version": "1.0",
+        "status": "protocol_ready_pending_video_execution",
         "tested_conditions": [
             {
                 "condition": "keypoint_dropout",
                 "description": "Randomly dropping joint coordinates and confidence scores",
-                "intensity_levels": [0.0, 0.1, 0.2, 0.3, 0.5],
-                "impact": "Evaluates resilience against missing limb keypoints and self-occlusions"
+                "intensity_levels": [0.0, 0.1, 0.2, 0.3, 0.5]
             },
             {
                 "condition": "keypoint_noise",
                 "description": "Additive Gaussian noise (std in pixels) on joint (x, y)",
-                "intensity_levels": [0.0, 1.0, 2.0, 5.0, 10.0],
-                "impact": "Evaluates sensitivity to pose estimation jitter"
+                "intensity_levels": [0.0, 1.0, 2.0, 5.0, 10.0]
             },
             {
                 "condition": "frame_cropping",
                 "description": "Edge cropping ratio clipping keypoints at boundary",
-                "intensity_levels": [0.0, 0.1, 0.2, 0.3],
-                "impact": "Evaluates performance when subject is partially out of camera frame"
+                "intensity_levels": [0.0, 0.1, 0.2, 0.3]
             },
             {
                 "condition": "hard_negatives",
@@ -107,7 +105,7 @@ def generate_evaluation_artifacts(output_dir: Path = ARTIFACTS_DIR) -> Dict[str,
                     "fast_sitting", "normal_lying_down", "crouching_pick_up",
                     "tying_shoe", "leaving_frame", "camera_occlusion"
                 ],
-                "expected_outcome": "No Fall"
+                "expected_outcome": "no_fall"
             }
         ]
     }
@@ -115,29 +113,14 @@ def generate_evaluation_artifacts(output_dir: Path = ARTIFACTS_DIR) -> Dict[str,
         json.dumps(robustness_protocol, indent=2), encoding="utf-8"
     )
 
-    # 4. Representative failure cases document
+    # 4. Failure case status artifact (pending verification on actual dataset)
     failure_cases = {
-        "failure_modes": [
-            {
-                "mode": "False Negative (Missed Fall)",
-                "count": 24,
-                "primary_causes": [
-                    "Slow controlled descent onto furniture misclassified as sitting",
-                    "Severe camera occlusion obscuring upper torso and hip movement",
-                    "Keypoint jitter during landing phase reducing pose reliability V1 score"
-                ],
-                "mitigation": "Combine motion urgency V1 hip descent rate with temporal heatmap windowing"
-            },
-            {
-                "mode": "False Positive (False Alert)",
-                "count": 13,
-                "primary_causes": [
-                    "Rapid crouch onto floor to retrieve low object",
-                    "Fast lying down motion on rug resembling sudden collapse"
-                ],
-                "mitigation": "Require 3 consecutive clear predictions (<0.35) before re-arming incident detector"
-            }
-        ]
+        "status": "pending_verification_on_actual_dataset_samples",
+        "historical_counts": {
+            "fn_missed_falls": 24,
+            "fp_false_alerts": 13
+        },
+        "note": "Per-sample root cause failure case verification requires access to raw video samples and will be documented when raw data are evaluated."
     }
     (output_dir / "failure_cases.json").write_text(
         json.dumps(failure_cases, indent=2), encoding="utf-8"
@@ -145,39 +128,22 @@ def generate_evaluation_artifacts(output_dir: Path = ARTIFACTS_DIR) -> Dict[str,
 
     # 5. Generate Matplotlib plots if matplotlib is installed
     if plt is not None:
-        # Plot 1: Confusion Matrix
+        # Plot 1: Historical Confusion Matrix
         fig, ax = plt.subplots(figsize=(5, 4))
         im = ax.imshow([[541, 13], [24, 433]], cmap="Blues")
         ax.set_xticks([0, 1])
         ax.set_yticks([0, 1])
-        ax.set_xticklabels(["No Fall", "Fall"])
-        ax.set_yticklabels(["No Fall", "Fall"])
+        ax.set_xticklabels(["no_fall", "fall"])
+        ax.set_yticklabels(["no_fall", "fall"])
         plt.xlabel("Predicted Label")
         plt.ylabel("True Label")
-        plt.title("ICare PoseC3D Confusion Matrix (N=1011)")
+        plt.title("Historical PoseC3D Confusion Matrix (N=1011)")
         for i in range(2):
             for j in range(2):
                 val = [[541, 13], [24, 433]][i][j]
                 ax.text(j, i, str(val), ha="center", va="center", color="white" if val > 200 else "black")
         plt.tight_layout()
         plt.savefig(plots_dir / "confusion_matrix.png", dpi=150)
-        plt.close()
-
-        # Plot 2: Robustness Keypoint Noise vs Precision/Recall
-        fig, ax = plt.subplots(figsize=(6, 4))
-        noise_std = [0.0, 1.0, 2.0, 5.0, 10.0]
-        precisions = [0.971, 0.965, 0.948, 0.892, 0.760]
-        recalls = [0.947, 0.941, 0.925, 0.854, 0.695]
-        ax.plot(noise_std, precisions, "o-", label="Precision")
-        ax.plot(noise_std, recalls, "s-", label="Recall")
-        ax.set_xlabel("Keypoint Gaussian Noise Std (pixels)")
-        ax.set_ylabel("Score")
-        ax.set_title("Robustness: Keypoint Coordinate Noise Degradation")
-        ax.set_ylim(0.5, 1.0)
-        ax.grid(True, linestyle="--", alpha=0.6)
-        ax.legend()
-        plt.tight_layout()
-        plt.savefig(plots_dir / "robustness_noise.png", dpi=150)
         plt.close()
 
     return {

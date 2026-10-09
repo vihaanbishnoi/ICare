@@ -56,16 +56,16 @@ To prevent overlapping 4-second temporal windows from registering duplicate aler
 1. **Trigger**: Opens an incident immediately when $P(\text{Fall}) \ge 0.50$.
 2. **Re-arm**: Requires 3 consecutive temporal predictions below $P(\text{Fall}) < 0.35$ before re-arming the detector.
 
-### 2.3 System Throughput & Hardware Measurements
+### 2.3 System Throughput & Hardware Measurement Protocol
 
 Inference is performed strictly using ONNX Runtime with the CPU execution provider (`device="cpu"`). GPU utilization is recorded as **Not Applicable**.
 
-| Metric | Measured Baseline / Unit | Operational Context |
+| Metric | Protocol Specification / Limit | Operational Context & Measurement Status |
 | --- | --- | --- |
-| **Processing Throughput** | $\sim 12.0$ FPS (CPU) | Frame resizing to 416px, 6 FPS sampling rate |
-| **Temporal Model Calls** | $\approx 1.33$ calls/sec | Prediction interval = 0.75 seconds |
-| **Process CPU Utilization** | Process-level % | Measured via `psutil` per process |
-| **Process Peak RAM (RSS)** | Peak RSS MB | Process resident set size |
+| **Processing Throughput (FPS)** | **Pending real video execution** | 12.0 FPS was the legacy prototype camera capture rate. Real processing FPS will be measured when public video clips are processed through `icare_app.engine`. |
+| **Temporal Model Call Rate** | **Configured upper bound ($\le 1.33$ calls/sec)** | Prediction interval is set to 0.75s (`prediction_interval_seconds = 0.75`). Actual call rate at 6 FPS sampling is $\approx 1$ call per 0.83s. |
+| **Process CPU Utilization** | **Pending execution** (Process %) | Process-level CPU % measured via `psutil` during engine runs. Unmeasured values stay `None`. |
+| **Process Peak RAM (RSS)** | **Pending execution** (Peak RSS MB) | Process resident set size measured via `psutil`. Unmeasured values stay `None`. |
 
 ---
 

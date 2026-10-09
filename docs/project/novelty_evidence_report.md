@@ -2,22 +2,22 @@
 
 ## Overview
 
-This report documents the architectural innovations, original components, reused open-source components, and supporting evidence for the ICare Pose-Based Fall Detection system.
+This report documents the architectural innovations, original contributions, reused components, and supporting evidence for the ICare Pose-Based Fall Detection system.
 
 ---
 
-## 1. Summary of Component Re-use vs. Novel Contributions
+## 1. Summary of Component Re-use, Engineering Infrastructure, and Novel Contributions
 
-| Component | Origin & Strategy | Contribution Description | Supporting Evidence File |
+| Component | Origin & Category | Description | Supporting Evidence File |
 | --- | --- | --- | --- |
 | **YOLOX-tiny** | Reused Pretrained | Person bounding box detection on sampled frames | `icare_app/pose.py` |
 | **RTMPose-s** | Reused Pretrained | COCO-17 keypoint estimation from cropped person boxes | `icare_app/pose.py` |
 | **PoseC3D (SlowOnly-R50)** | Fine-Tuned Backbone | 3D CNN temporal classifier fine-tuned on fall dataset | `models/posec3d_fall.onnx` |
+| **Incident De-duplication Protocol** | **Engineering Component** | Dual-threshold state machine ($0.50$ alert trigger / $0.35$ re-arm after 3 clear windows) | `api/incidents.py` |
+| **Evaluation Benchmark Harness** | **Engineering Component** | Automated throughput, latency percentile ($p_{50}/p_{95}$), and false alarm rate benchmark suite | `evaluation/benchmark_harness.py` |
 | **PoseC3D Preprocessing Bridge** | **Novel Custom Component** | Real-time temporal interpolation (48 positions over 4.0s) & $17\times 48\times 64\times 64$ Gaussian target generation | `icare_app/posec3d_bridge.py` |
 | **Motion Urgency V1 Signal** | **Novel Custom Component** | Normalized hip descent rate, torso rotation, joint displacement, and aspect ratio change | `icare_app/pose_signals.py` |
 | **Pose Reliability V1 Signal** | **Novel Custom Component** | Multi-factor confidence score combining joint visibility, torso completeness, and temporal stability | `icare_app/pose_signals.py` |
-| **Incident De-duplication Protocol** | **Novel Custom Component** | Dual-threshold state machine ($0.50$ alert trigger / $0.35$ re-arm after 3 clear windows) | `api/incidents.py` |
-| **Evaluation Benchmark Harness** | **Novel Custom Component** | Automated throughput, latency percentile ($p_{50}/p_{95}$), and false alarm rate benchmark suite | `evaluation/benchmark_harness.py` |
 
 ---
 
@@ -43,5 +43,5 @@ Instead of executing full MMAction2 video loading pipelines at inference time, `
 ## 3. Evidence Traceability Matrix
 
 - **Accuracy & F1 Evidence**: Verified against held-out group-aware split ($N=1011$, Precision 97.09%, Recall 94.75%, F1 95.90%).
-- **Parity Audit Evidence**: Verified in `docs/project/mraction2_parity_review.md`.
+- **Parity Audit Evidence**: Verified in `docs/project/mmaction2_parity_review.md`.
 - **Benchmark Code Evidence**: Verified in `evaluation/benchmark_harness.py` and `tests/test_evaluation_harness.py`.
