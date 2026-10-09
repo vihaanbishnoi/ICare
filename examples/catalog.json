@@ -1,25 +1,31 @@
 {
   "version": "1.0",
   "status": "approved",
-  "description": "Demonstration asset catalog with approved video clips.",
+  "description": "Demonstration asset catalog with approved public video clips.",
   "examples": [
     {
-      "id": "fall_example_01",
-      "title": "Standard Fall Example",
-      "filename": "fall_example_01.mp4",
+      "example_id": "fall_example_01",
+      "title": "Indoor Single-Person Fall Event",
       "expected_outcome": "fall",
-      "annotated_onset_seconds": 2.5,
+      "video_url": "/api/v1/examples/fall_example_01/media",
       "duration_seconds": 6.0,
-      "description": "Standard fall event sequence."
+      "analysis_mode": "on_demand",
+      "model_version": null,
+      "provenance": "UR Fall Detection Dataset (University of Rzeszow, CC BY 4.0)",
+      "file": "fall_example_01.mp4",
+      "annotated_onset_seconds": 2.5
     },
     {
-      "id": "normal_example_01",
-      "title": "Normal Activity Example",
-      "filename": "normal_example_01.mp4",
+      "example_id": "normal_example_01",
+      "title": "Indoor Single-Person Walking Activity",
       "expected_outcome": "no_fall",
-      "annotated_onset_seconds": null,
+      "video_url": "/api/v1/examples/normal_example_01/media",
       "duration_seconds": 6.0,
-      "description": "Normal walking and activity sequence without fall."
+      "analysis_mode": "on_demand",
+      "model_version": null,
+      "provenance": "UR Fall Detection Dataset (University of Rzeszow, CC BY 4.0)",
+      "file": "normal_example_01.mp4",
+      "annotated_onset_seconds": null
     }
   ]
 }

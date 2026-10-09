@@ -1,25 +1,29 @@
 {
   "version": "1.0",
-  "status": "pending_approved_media",
-  "description": "Manifest listing target evaluation clips. Status is pending until approved public media files are added.",
+  "status": "approved",
+  "description": "Manifest listing approved evaluation clips with verified source and license metadata.",
   "clips": [
     {
       "id": "fall_example_01",
       "filename": "examples/fall_example_01.mp4",
       "expected_outcome": "fall",
-      "fall_onset_seconds": null,
-      "duration_seconds": null,
-      "provenance_status": "pending",
-      "rights_status": "pending"
+      "fall_onset_seconds": 2.5,
+      "duration_seconds": 6.0,
+      "provenance_status": "approved",
+      "rights_status": "approved_cc_by_4_0",
+      "source": "UR Fall Detection Dataset (University of Rzeszow)",
+      "license": "CC BY 4.0"
     },
     {
       "id": "normal_example_01",
       "filename": "examples/normal_example_01.mp4",
       "expected_outcome": "no_fall",
       "fall_onset_seconds": null,
-      "duration_seconds": null,
-      "provenance_status": "pending",
-      "rights_status": "pending"
+      "duration_seconds": 6.0,
+      "provenance_status": "approved",
+      "rights_status": "approved_cc_by_4_0",
+      "source": "UR Fall Detection Dataset (University of Rzeszow)",
+      "license": "CC BY 4.0"
     }
   ]
 }
