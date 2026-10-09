@@ -1,6 +1,25 @@
 {
   "version": "1.0",
-  "status": "pending_approved_media",
-  "description": "Demonstration asset catalog. Media entries remain pending until approved public clips are added.",
-  "examples": []
+  "status": "approved",
+  "description": "Demonstration asset catalog with approved video clips.",
+  "examples": [
+    {
+      "id": "fall_example_01",
+      "title": "Standard Fall Example",
+      "filename": "fall_example_01.mp4",
+      "expected_outcome": "fall",
+      "annotated_onset_seconds": 2.5,
+      "duration_seconds": 6.0,
+      "description": "Standard fall event sequence."
+    },
+    {
+      "id": "normal_example_01",
+      "title": "Normal Activity Example",
+      "filename": "normal_example_01.mp4",
+      "expected_outcome": "no_fall",
+      "annotated_onset_seconds": null,
+      "duration_seconds": 6.0,
+      "description": "Normal walking and activity sequence without fall."
+    }
+  ]
 }

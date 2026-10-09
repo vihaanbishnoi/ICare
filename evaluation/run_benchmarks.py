@@ -33,11 +33,14 @@ def load_annotations_from_catalog(catalog_path: Path) -> Tuple[List[ClipAnnotati
     for item in items:
         clip_id = item.get("example_id", item.get("id"))
         filename = Path("examples") / item.get("file", item.get("filename", ""))
+        onset_sec = item.get("annotated_onset_seconds")
+        if onset_sec is None:
+            onset_sec = item.get("fall_onset_seconds", item.get("fall_onset_sec"))
         annotations.append(ClipAnnotation(
             clip_id=clip_id,
             filename=filename,
             true_label=item.get("expected_outcome", item.get("label", "No Fall")),
-            fall_onset_seconds=item.get("fall_onset_seconds", item.get("fall_onset_sec")),
+            fall_onset_seconds=onset_sec,
             duration_seconds=item.get("duration_seconds", item.get("duration_sec")),
             provenance_status=item.get("provenance_status", status),
         ))
