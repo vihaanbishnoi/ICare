@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "status": "pending_approved_media",
+  "description": "Demonstration asset catalog and annotations. Provenance remains pending until approved public media clips are procured.",
+  "examples": [
+    {
+      "example_id": "fall_example_01",
+      "title": "Fall Demonstration Example",
+      "expected_outcome": "Fall",
+      "video_url": "/examples/fall_example_01.mp4",
+      "duration_seconds": null,
+      "analysis_mode": "on_demand",
+      "model_version": null,
+      "provenance": "Pending approved public media asset procurement",
+      "provenance_status": "pending",
+      "file": "fall_example_01.mp4",
+      "fall_onset_seconds": null
+    },
+    {
+      "example_id": "normal_example_01",
+      "title": "Normal Activity Example",
+      "expected_outcome": "No Fall",
+      "video_url": "/examples/normal_example_01.mp4",
+      "duration_seconds": null,
+      "analysis_mode": "on_demand",
+      "model_version": null,
+      "provenance": "Pending approved public media asset procurement",
+      "provenance_status": "pending",
+      "file": "normal_example_01.mp4",
+      "fall_onset_seconds": null
+    }
+  ]
+}

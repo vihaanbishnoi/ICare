@@ -1,7 +1,8 @@
 """Robustness and perturbation evaluation framework for ICare (Person 4).
 
 Evaluates pose pipeline degradation under synthetic noise, missing keypoint joints,
-frame cropping/occlusions, and hard negative cases.
+frame cropping/occlusions, and hard negative activity cases (sitting fast, lying down,
+crouching, picking up an object, tying a shoe, leaving the frame).
 """
 from __future__ import annotations
 
@@ -10,6 +11,16 @@ import random
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from evaluation.benchmark_harness import BenchmarkHarness, ClipAnnotation, EvaluationRecord, MetricResults
+
+
+HARD_NEGATIVE_ACTIVITIES = [
+    {"activity_id": "fast_sitting", "title": "Fast sitting in chair", "expected_outcome": "No Fall"},
+    {"activity_id": "lying_down", "title": "Normal lying down on bed/sofa", "expected_outcome": "No Fall"},
+    {"activity_id": "crouching", "title": "Crouching to pick up object", "expected_outcome": "No Fall"},
+    {"activity_id": "tying_shoe", "title": "Bending down tying shoe", "expected_outcome": "No Fall"},
+    {"activity_id": "leaving_frame", "title": "Rapidly leaving camera view", "expected_outcome": "No Fall"},
+    {"activity_id": "camera_occlusion", "title": "Partial camera occlusion", "expected_outcome": "No Fall"},
+]
 
 
 @dataclass
@@ -22,13 +33,13 @@ class RobustnessLevelResult:
 
 
 def apply_keypoint_dropout(
-    keypoints: List[List[float]],
+    keypoints: Sequence[Sequence[float]],
     dropout_prob: float = 0.1,
     seed: Optional[int] = None
 ) -> List[List[float]]:
     """Randomly zero out keypoint coordinates and confidence scores with probability dropout_prob.
     
-    Each keypoint in keypoints is expected to be [x, y, score] or [x, y].
+    Each keypoint is expected to be [x, y, score] or [x, y].
     """
     if dropout_prob <= 0.0:
         return [list(kp) for kp in keypoints]
@@ -44,14 +55,11 @@ def apply_keypoint_dropout(
 
 
 def apply_keypoint_noise(
-    keypoints: List[List[float]],
+    keypoints: Sequence[Sequence[float]],
     noise_std: float = 2.0,
     seed: Optional[int] = None
 ) -> List[List[float]]:
-    """Add Gaussian noise to keypoint x and y coordinates.
-    
-    Keypoints: list of [x, y] or [x, y, score].
-    """
+    """Add Gaussian noise to keypoint x and y coordinates."""
     if noise_std <= 0.0:
         return [list(kp) for kp in keypoints]
 
@@ -67,15 +75,12 @@ def apply_keypoint_noise(
 
 
 def apply_frame_cropping(
-    keypoints: List[List[float]],
+    keypoints: Sequence[Sequence[float]],
     crop_ratio: float = 0.2,
     img_width: float = 416.0,
     img_height: float = 416.0
 ) -> List[List[float]]:
-    """Simulate frame edge cropping by setting keypoints falling outside the cropped area to 0.0.
-    
-    crop_ratio: fraction of frame border cropped out from top/left/right/bottom.
-    """
+    """Simulate frame edge cropping by setting keypoints falling outside the cropped area to 0.0."""
     if crop_ratio <= 0.0:
         return [list(kp) for kp in keypoints]
 
@@ -96,26 +101,36 @@ def apply_frame_cropping(
 
 
 class RobustnessEvaluator:
-    """Evaluates detector robustness across varying perturbation types and levels."""
+    """Evaluates detector robustness across varying perturbation types and hard-negative cases."""
 
     def __init__(self, harness: Optional[BenchmarkHarness] = None) -> None:
         self.harness = harness or BenchmarkHarness()
 
+    def evaluate_hard_negatives(
+        self,
+        engine: Any,
+        hard_negative_annotations: Sequence[ClipAnnotation]
+    ) -> MetricResults:
+        """Run evaluation exclusively on hard-negative non-fall activity clips."""
+        records: List[EvaluationRecord] = []
+        for annot in hard_negative_annotations:
+            if annot.filename.is_file():
+                rec = self.harness.run_engine_clip(engine, annot)
+                records.append(rec)
+        return self.harness.compute_metrics(records, hard_negative_annotations)
+
     def evaluate_perturbation_range(
         self,
+        records_fn: Callable[[str, float], List[EvaluationRecord]],
         annotations: Sequence[ClipAnnotation],
         perturbation_type: str,
-        intensities: Sequence[float],
-        predictor_factory: Callable[[str, float], Callable[[ClipAnnotation], Tuple[List[Dict[str, Any]], float, int]]]
+        intensities: Sequence[float]
     ) -> List[RobustnessLevelResult]:
-        """Evaluate performance across a sequence of perturbation intensity levels.
-        
-        predictor_factory receives (perturbation_type, intensity) and returns a prediction_fn.
-        """
+        """Evaluate performance degradation across perturbation intensity levels."""
         results: List[RobustnessLevelResult] = []
         for level in intensities:
-            prediction_fn = predictor_factory(perturbation_type, level)
-            records, metrics = self.harness.run_eval_on_predictions(annotations, prediction_fn)
+            records = records_fn(perturbation_type, level)
+            metrics = self.harness.compute_metrics(records, annotations)
             results.append(RobustnessLevelResult(
                 perturbation_type=perturbation_type,
                 intensity=level,
