@@ -1,0 +1,21 @@
+# Build context for deployment/Dockerfile: only the runtime needs to be sent.
+.git
+.github
+**/__pycache__
+**/*.py[cod]
+.venv
+venv
+env
+.env
+.env.*
+artifacts
+reports
+output
+build
+dist
+*.log
+research
+docs
+tests
+frontend
+node_modules

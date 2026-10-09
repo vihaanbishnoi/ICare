@@ -1,0 +1,33 @@
+# Single-host ICare stack. From the repository root:
+#   docker compose -f deployment/compose.yaml up --build -d
+# Only the API + engine exist so far; the frontend and the HTTPS reverse proxy
+# are added here when Person 3's build and the staging host are ready.
+name: icare
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+      args:
+        PRELOAD_MODELS: ${ICARE_PRELOAD_MODELS:-1}
+    image: icare-api:local
+    init: true
+    restart: unless-stopped
+    # Loopback only: the public origin will be the reverse proxy, never this port.
+    ports:
+      - "127.0.0.1:${ICARE_API_PORT:-8000}:8000"
+    environment:
+      ICARE_ALLOWED_ORIGINS: ${ICARE_ALLOWED_ORIGINS:-}
+      ICARE_COOKIE_SECURE: ${ICARE_COOKIE_SECURE:-0}
+      ICARE_MAX_UPLOAD_MB: ${ICARE_MAX_UPLOAD_MB:-50}
+      ICARE_MAX_UPLOAD_SECONDS: ${ICARE_MAX_UPLOAD_SECONDS:-60}
+      ICARE_MAX_QUEUED_JOBS: ${ICARE_MAX_QUEUED_JOBS:-5}
+      ICARE_JOB_TIMEOUT_SECONDS: ${ICARE_JOB_TIMEOUT_SECONDS:-600}
+      ICARE_RETENTION_HOURS: ${ICARE_RETENTION_HOURS:-24}
+    volumes:
+      - icare-data:/data
+    stop_grace_period: 30s
+
+volumes:
+  icare-data:

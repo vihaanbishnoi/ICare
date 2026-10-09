@@ -8,24 +8,41 @@ not configuration or evidence of deployment.
 | Hosting provider/account/project | Pending Person 5's selection |
 | Staging URL | Pending |
 | Public no-login demo URL | Pending |
-| Runtime/API/frontend startup | Pending actual implementations |
+| Runtime/API/frontend startup | API + engine: `docker compose -f deployment/compose.yaml up --build -d` (see [README](README.md)); frontend pending |
 | Release commit/model/configuration | Pending |
 | Deployment/recovery owner and backup | Chosen teammates pending |
 | Cost cap and hosting limits | Pending |
 | Measured concurrency/latency/resources | Pending Person 4's evidence |
-| Upload bytes/duration/rate/queue limits | Pending Persons 2 and 5 |
-| Ownership/expiry/retention | Pending Persons 2 and 5 |
+| Upload bytes/duration/rate/queue limits | API defaults 50 MB / 60 s / 5 queued, set by `ICARE_*` in compose; per-visitor rate limit pending Person 2 |
+| Ownership/expiry/retention | HttpOnly session cookie, 24 h retention (API defaults); `ICARE_COOKIE_SECURE=1` required behind HTTPS |
 | Secret store and variable names | Pending names only; never values |
 
 ## Deploy and verify
 
-Pending: actual build/container/deploy commands, readiness checks, and verification
-of real example/upload outputs through the deployed API/frontend.
+Local container (verified with `PRELOAD_MODELS=0`; see below):
+
+```bash
+docker compose -f deployment/compose.yaml up --build -d
+curl -f http://127.0.0.1:8000/api/v1/health
+curl -f http://127.0.0.1:8000/api/v1/ready      # must be 200 before announcing
+curl -f http://127.0.0.1:8000/api/v1/examples
+```
+
+Pending: staging host deploy commands, the default `PRELOAD_MODELS=1` build on a
+host that can reach the model URLs, and real example/upload outputs through the
+deployed API/frontend.
 
 ## Monitor and recover
 
-Pending: logs, model/job failures, CPU/RAM/storage/cost limits, cleanup/restart
-commands, and responsible teammate.
+```bash
+docker compose -f deployment/compose.yaml ps        # health: healthy
+docker compose -f deployment/compose.yaml logs -f api
+docker compose -f deployment/compose.yaml restart api
+```
+
+Job data persists in the `icare-data` volume across restarts; jobs left running
+by a crash are marked `interrupted` on startup. `docker compose ... down -v`
+deletes all job data. Pending: CPU/RAM/storage/cost limits and the responsible teammate.
 
 ## Roll back
 
