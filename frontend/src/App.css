@@ -123,6 +123,10 @@ a { color: inherit; }
 .tab:hover { color: var(--text-primary); background: var(--color-surface-2); }
 .tab--active { background: var(--color-surface-2); color: var(--text-primary); border: 1px solid var(--color-border-glow); box-shadow: 0 0 16px var(--color-primary-glow); }
 .tab__icon { font-size: 1rem; }
+@media (max-width: 560px) {
+  .tabs { gap: 4px; padding: 4px; }
+  .tab { flex-direction: column; gap: 2px; min-width: 0; padding: 8px 4px; font-size: 0.75rem; text-align: center; }
+}
 .demo-panel { display: block; }
 .demo-panel--hidden { display: none; }
 .demo-grid { display: grid; grid-template-columns: 1fr 420px; gap: 24px; align-items: start; }

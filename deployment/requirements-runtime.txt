@@ -1,0 +1,33 @@
+# Pinned container runtime for the API + inference engine (Python 3.11, CPU).
+# Resolved in a clean python:3.11-slim image; regenerate the same way when a
+# version changes and record the reason in the PR.
+#
+# One OpenCV package only. rtmlib's metadata lists both opencv-python and
+# opencv-contrib-python, and installing both lets one silently overwrite the
+# other's cv2/. The engine and rtmlib's YOLOX/RTMPose path use only core cv2
+# (VideoCapture, resize, cvtColor, warpAffine, dnn), which the headless build
+# provides. rtmlib is therefore installed separately with --no-deps:
+# see rtmlib.txt and deployment/Dockerfile.api.
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+click==8.5.0
+fastapi==0.142.4
+flatbuffers==25.12.19
+h11==0.16.0
+idna==3.20
+numpy==2.4.6
+onnxruntime==1.31.0
+opencv-python-headless==4.14.0.94
+opentelemetry-api==1.45.1
+packaging==26.3
+protobuf==7.36.2
+psutil==7.2.2
+pydantic==2.14.0
+pydantic_core==2.50.0
+python-multipart==0.0.32
+starlette==1.7.0
+tqdm==4.70.1
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+uvicorn==0.54.0

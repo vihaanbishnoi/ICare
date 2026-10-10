@@ -1,11 +1,20 @@
+# Build context for deployment/Dockerfile.api and Dockerfile.web.
+# Dockerfile.web copies frontend/, so it must not be excluded here.
 .git
-.venv
+.github
+.venv*
+venv
+env
 artifacts
+reports
 output
+research
+docs
 **/node_modules
 **/dist
 **/__pycache__
-**/*.pyc
+**/*.py[cod]
+*.log
 .env
 .env.*
 *.pth

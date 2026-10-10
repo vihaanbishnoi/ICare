@@ -226,9 +226,10 @@ a different API port. `.env.example` lists supported environment variables;
 export them in your shell or host configuration (the API does not auto-load .env).
 The engine entry point remains `icare_app.engine.load_engine` ([guide](icare_app/ENGINE.md)).
 
-With Docker running, the added local packaging can be tried using
-`docker compose up --build` and `http://127.0.0.1:7860`. Only Compose configuration
-has been validated here; container build/runtime and public HTTPS remain pending.
+With Docker running, `docker compose up --build -d --wait` serves the whole
+site at `http://127.0.0.1:7860` (add `ICARE_ALLOW_UNVERIFIED_EXAMPLES=1` locally
+to enable the two example clips, then `deployment/smoke_test.sh`). The container
+build, run and smoke test are verified locally and in CI; public HTTPS is pending.
 See [deployment](deployment/README.md) and [runbook](deployment/runbook.md).
 
 ## Check before opening a PR

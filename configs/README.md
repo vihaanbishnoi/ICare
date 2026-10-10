@@ -1,7 +1,8 @@
 # Product configuration boundary
 
 Deployment owner (Person 5) coordinates environment/origin/job limits for the
-[default stack](../docs/project/stack.md). No configuration loader is implemented.
+[default stack](../docs/project/stack.md). The API reads `ICARE_*` variables
+(`api/config.py`, `api/engine.py`); the root `compose.yaml` passes them through.
 Development own model/preprocessing/threshold meaning and Development/5 own
 ownership/limits/retention.
 

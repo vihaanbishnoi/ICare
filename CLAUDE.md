@@ -2,6 +2,6 @@
 
 # Claude project entry
 
-Use the shared instructions above. Read the selected numbered brief and relevant
-v1 contract before implementing its first deliverable. For plain chat sessions,
-the teammate must provide those files; do not claim to have read unavailable files.
+Use the shared instructions above. Read docs/development.md and the relevant v1
+contract before implementing. For plain chat sessions, the teammate must provide
+those files; do not claim to have read unavailable files.
