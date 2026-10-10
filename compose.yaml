@@ -3,18 +3,33 @@ services:
     build:
       context: .
       dockerfile: deployment/Dockerfile.api
+      args:
+        # 1 bakes the pose weights into the image (starts ready offline); 0 skips.
+        PRELOAD_MODELS: ${ICARE_PRELOAD_MODELS:-1}
+    init: true
     environment:
       ICARE_API_DATA_DIR: /app/artifacts/api
       ICARE_POSEC3D_MODEL: /app/models/posec3d_fall.onnx
       ICARE_POSE_DEVICE: cpu
       ICARE_COOKIE_SECURE: "${ICARE_COOKIE_SECURE:-0}"
-      XDG_CACHE_HOME: /app/cache
+      ICARE_ALLOWED_ORIGINS: "${ICARE_ALLOWED_ORIGINS:-}"
+      ICARE_MAX_UPLOAD_MB: "${ICARE_MAX_UPLOAD_MB:-50}"
+      ICARE_MAX_UPLOAD_SECONDS: "${ICARE_MAX_UPLOAD_SECONDS:-60}"
+      ICARE_MAX_QUEUED_JOBS: "${ICARE_MAX_QUEUED_JOBS:-5}"
+      ICARE_JOB_TIMEOUT_SECONDS: "${ICARE_JOB_TIMEOUT_SECONDS:-600}"
+      ICARE_RETENTION_HOURS: "${ICARE_RETENTION_HOURS:-24}"
+      ICARE_MAX_ACTIVE_JOBS_PER_VISITOR: "${ICARE_MAX_ACTIVE_JOBS_PER_VISITOR:-2}"
+      ICARE_MAX_JOBS_PER_VISITOR_WINDOW: "${ICARE_MAX_JOBS_PER_VISITOR_WINDOW:-12}"
+      ICARE_MAX_JOBS_PER_IP_WINDOW: "${ICARE_MAX_JOBS_PER_IP_WINDOW:-60}"
+      ICARE_MAX_STORAGE_MB: "${ICARE_MAX_STORAGE_MB:-1024}"
+      # Local diagnostics only; keep 0 for any public deployment.
+      ICARE_ALLOW_UNVERIFIED_EXAMPLES: "${ICARE_ALLOW_UNVERIFIED_EXAMPLES:-0}"
     volumes:
       - api-data:/app/artifacts
-      - model-cache:/app/cache
     expose:
       - "8000"
     restart: unless-stopped
+    stop_grace_period: 30s
     cpus: 2
     mem_limit: 2g
     healthcheck:
@@ -28,7 +43,7 @@ services:
       context: .
       dockerfile: deployment/Dockerfile.web
     ports:
-      - "127.0.0.1:7860:80"
+      - "127.0.0.1:${ICARE_WEB_PORT:-7860}:80"
     depends_on:
       api:
         condition: service_healthy
@@ -36,4 +51,3 @@ services:
 
 volumes:
   api-data:
-  model-cache:

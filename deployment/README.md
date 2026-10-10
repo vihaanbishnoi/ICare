@@ -8,22 +8,33 @@ and [runbook](runbook.md). There is no verified public deployment yet.
 
 With a running Docker daemon, from the repository root:
 
-```powershell
-docker compose config --quiet
-docker compose up --build
+```sh
+docker compose up --build -d --wait
+# local diagnostics only: also expose the two unverified example clips
+ICARE_ALLOW_UNVERIFIED_EXAMPLES=1 docker compose up --build -d --wait
+deployment/smoke_test.sh            # needs the examples flag above
 ```
 
-The planned local URL is http://127.0.0.1:7860. Configuration validation passed;
-images were not built/run here because the Docker daemon was unavailable.
-Treat the first clean build and real example/upload check as a release task.
+Open http://127.0.0.1:7860. Verified on 10 October 2026 (Colima, 4 CPU / 6 GB):
+clean build, both examples and an upload through nginx, owner isolation (404),
+range media, CSV/JSON reports, cross-origin 403, 413 above 50 MB, cancellation
+followed by model reload, API restart with results preserved, and phone width.
+CI repeats the build and `smoke_test.sh` on every pull request.
 
-- Dockerfile.api installs the CPU runtime/API, runs as an unprivileged user,
-  and starts one uvicorn process. API port 8000 is internal to Compose.
-- Dockerfile.web builds/tests React and serves dist through nginx.
-- nginx preserves Host, proxies /api/v1 and serves SPA routes on the same origin.
-- Named volumes persist private job data and downloaded pose weights.
-- API resources default to two CPUs / 2 GB; these are initial limits, not measured
-  adequate capacity. First initialization needs network access for pose weights.
+- Dockerfile.api installs the pinned runtime in requirements-runtime.txt with a
+  single OpenCV (headless); rtmlib is installed `--no-deps` (rtmlib.txt) so its
+  metadata cannot add opencv-python/opencv-contrib-python beside it.
+- `PRELOAD_MODELS=1` (default, `ICARE_PRELOAD_MODELS`) downloads the YOLOX/RTMPose
+  weights and loads the whole engine at build time, so the image starts ready
+  without network access and a broken model fails the build. Image about 760 MB.
+- The API runs as an unprivileged user with one uvicorn process; port 8000 is
+  internal to Compose. The api-data volume holds SQLite and private job files.
+- Dockerfile.web runs the frontend tests, builds React and serves dist via nginx.
+- nginx preserves Host, overwrites X-Forwarded-For with the real peer (the API
+  uses it for per-network admission, so client values must not pass through),
+  serves /assets/ as immutable and index.html as no-cache.
+- API resources default to two CPUs / 2 GB; observed RSS after jobs was about
+  390-460 MB. These are initial limits, not measured capacity.
 - The web listener binds loopback. Secure cookies are disabled for this local
   HTTP profile only. .dockerignore excludes private runtime artifacts and caches.
 
@@ -32,8 +43,10 @@ Treat the first clean build and real example/upload check as a release task.
 Choose a CPU-capable host and spending/storage budget, build and test containers,
 lock actual dependency versions and model-cache initialization, configure TLS,
 set ICARE_COOKIE_SECURE=1, and preserve the public Host/protocol at every proxy.
-The API trusts forwarded protocol headers in this container profile because it
-is private behind nginx; never expose that API directly to untrusted clients.
+The API trusts forwarded headers in this container profile because it is private
+behind nginx; never expose that API directly to untrusted clients. If another
+TLS proxy sits in front of nginx, configure nginx `set_real_ip_from` /
+`real_ip_header` for that proxy only, or every visitor shares one admission key.
 
 Validate two visitors, upload/report isolation, admission/storage limits, expiry,
 timeouts, model failures, readiness, restart and rollback through the actual

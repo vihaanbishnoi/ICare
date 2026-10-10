@@ -42,7 +42,7 @@ class EvaluationIntegrityTests(unittest.TestCase):
             manifest = examples / 'manifest.json'
             manifest.write_text(json.dumps({'clips': [{'id':'clip','filename':'examples/clip.mp4','expected_outcome':'fall'}]}))
             annotations, _ = load_annotations_from_catalog(manifest)
-            self.assertEqual(annotations[0].filename, examples / 'clip.mp4')
+            self.assertEqual(annotations[0].filename, (examples / 'clip.mp4').resolve())
             self.assertEqual(annotations[0].label_status, 'pending')
 
 

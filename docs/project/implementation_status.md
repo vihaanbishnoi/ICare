@@ -33,7 +33,7 @@ briefs, prompts, roster and handoff have been removed.
 | Privacy | Independent visitor 404, owned range media and JSON report checks passed |
 | Gaussian kernel audit | Four numeric cases against pinned MMAction2 v1.2.0 source; maximum absolute delta 0.003454; full pipeline parity not established |
 | Report | 14 pages; intro 2, architecture 2, dataset 1, results/analysis 5; rendered and visually checked |
-| Compose | Config validated; daemon unavailable, container execution pending |
+| Compose | Built and run locally 10 Oct 2026; examples, upload, isolation, cancellation, restart and smoke test pass through nginx; CI job added |
 
 ## Scientific inputs still missing
 
@@ -51,7 +51,7 @@ The two-clip report does not establish new accuracy or external superiority.
 
 ## Person 5 next
 
-Build and test Compose from a clean clone, lock the verified host runtime, choose
+Containers are verified locally (single OpenCV, baked pose weights). Next: choose
 provider/cost budgets, configure HTTPS and secure cookies, forward trusted client
 address/Host/protocol, tune admission/resource budgets, test recovery/rollback,
 verify permitted public example assets and publish the live URL. See the
