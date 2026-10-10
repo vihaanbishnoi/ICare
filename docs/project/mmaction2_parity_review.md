@@ -1,8 +1,8 @@
-# MMAction2 Parity Review and Engine Parameters Audit (Person 4)
+# MMAction2 Parity Review and Engine Parameters Audit (Development)
 
 ## Overview
 
-Person 1 requested a review of the custom ONNX preprocessing bridge (`icare_app/posec3d_bridge.py`) against the MMAction2 training pipeline, as well as an evaluation of engine scheduling choices.
+Development requested a review of the custom ONNX preprocessing bridge (`icare_app/posec3d_bridge.py`) against the MMAction2 training pipeline, as well as an evaluation of engine scheduling choices.
 
 ---
 
@@ -37,3 +37,13 @@ Person 1 requested a review of the custom ONNX preprocessing bridge (`icare_app/
 1. **Verification Status**: Code reading confirms that spatial crop, Gaussian target generation ($\sigma=0.6$), and tensor formatting match MMAction2 formulas. Full numerical verification requires running identical input tensors through both frameworks.
 2. **Temporal Difference**: Note the structural difference between MMAction2 full-clip sampling and ICare's rolling 4-second window.
 3. **Model Evaluation**: Published precision/recall/F1 metrics describe the group-aware held-out test split (96.34% accuracy, 95.90% fall F1) and must not be reported as live service performance until verified subject-disjoint split data are evaluated.
+
+## Numerical kernel diagnostic on 10 October 2026
+
+The actual deployed heatmap function and pinned MMAction2 v1.2.0 Gaussian
+method were compared at identical transformed coordinates across four diagnostic
+cases. Maximum absolute delta was 0.003454. Spatial/temporal transforms and
+model predictions were not jointly compared. The Gaussian stencil discrepancy
+and full-clip versus rolling-window difference prevent a full-parity claim.
+Preprocessing and model weights were preserved pending paired validation data.
+See tools/audit_heatmap_kernel.py and the completed report for scope and evidence.

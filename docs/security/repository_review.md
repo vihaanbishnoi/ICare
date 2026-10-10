@@ -1,5 +1,31 @@
 # Repository security review
 
+## Current verification: 10 October 2026
+
+A refreshed heuristic scan found no credential/private-key matches and no scan
+errors in 130 local text/Office items and 253 historical text blobs across 26
+locally reachable commits. It covered Git-eligible working files, root .env
+variants and local Git remote configuration; output records locations/rule names,
+never secret values. Binary models/media, remote-only/unreachable history and
+dependency vulnerabilities are outside this credential check. A separate npm
+audit of the frontend lockfile reported zero known vulnerabilities; Python/image
+dependency review remains pending. Evidence is under ignored
+artifacts/security_scan_summary.json. This is not proof that every possible
+credential format is absent.
+
+No tracked file matched the active ignore rules. .env variants, private keys,
+runtime data, caches, generated reports and frontend node_modules/dist are
+excluded. .env.example is non-secret. Local ONNX inference needs no API key.
+
+The new API now implements random owned jobs, anonymous HttpOnly session cookies,
+private/no-store results, upload/queue limits and periodic retention. Two-visitor
+isolation and owned media/report access passed locally. Catalog media is confined
+to its directory. Same-origin proxy handling and concurrent admission were fixed.
+Public HTTPS, secure-cookie deployment, measured per-visitor/storage budgets,
+container recovery and Python/image dependency review remain pending Deployment owner (Person 5)'s release work.
+
+## Historical preparation review: 7 October 2026
+
 Reviewed on 7 October 2026 against the local working tree and locally available
 Git refs. This is a repository review, not a production security certification.
 
@@ -39,7 +65,7 @@ it at the provider first and coordinate any necessary history cleanup.
 
 ## Deployment findings
 
-For the new product, Person 2 owns job/result isolation and Person 5 coordinates
+For the new product, Development owns job/result isolation and Deployment owner (Person 5) coordinates
 hosting, limits, retention, and secret management. The public example/upload
 journey requires no account login; browser/job ownership must still protect
 private uploads and reports. This is the target design, not an implemented fix.
@@ -62,5 +88,5 @@ requirements. See the [Gitleaks action documentation](https://github.com/gitleak
 
 A follow-up local heuristic scan after restructuring inspected 58 local text
 files/Office archives and 57 historical text blobs across seven reachable commits,
-with no matches or scan errors. See [team handoff](../team/handoff.md)
+with no matches or scan errors. See [team handoff](../development.md)
 for owners and acceptance criteria.

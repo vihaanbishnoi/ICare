@@ -64,7 +64,8 @@ def load_real_engine() -> Engine | None:
         "device": os.environ.get("ICARE_POSE_DEVICE", "cpu"),
     }
     try:
-        return load_engine(config)
+        from api.process_engine import ProcessEngine
+        return ProcessEngine(config)
     except Exception:  # noqa: BLE001 - readiness must report, not crash startup
         log.exception("Engine failed to load; API will report not ready")
         return None

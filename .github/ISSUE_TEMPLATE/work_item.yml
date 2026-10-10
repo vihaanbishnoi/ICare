@@ -1,17 +1,14 @@
 name: Work item
-description: A scoped task for a chosen Person 1 through Person 5 part
+description: A development or deployment task
 title: "[Task] "
 body:
   - type: dropdown
     id: workstream
     attributes:
-      label: Numbered part
+      label: Responsibility
       options:
-        - Person 1 Inference engine and model runtime
-        - Person 2 API jobs incidents and private results
-        - Person 3 Public frontend and demo experience
-        - Person 4 Evaluation benchmarks and research evidence
-        - Person 5 Deployment security integration and release
+        - Development engine API frontend and evaluation
+        - Deployment hosting HTTPS operations and live release
     validations:
       required: true
   - type: textarea
@@ -33,7 +30,7 @@ body:
     id: scope
     attributes:
       label: Files and shared interfaces
-      description: Identify files, adjacent numbered parts, and interface agreements.
+      description: Identify files and affected interface agreements.
   - type: dropdown
     id: strategy
     attributes:
@@ -47,4 +44,4 @@ body:
     id: dependencies
     attributes:
       label: Dependencies
-      description: Link blocking issues and decisions. Assign the teammate who chose this part; Person 5 tracks integration.
+      description: Link blocking issues and decisions. Identify development or deployment ownership.

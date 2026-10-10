@@ -6,51 +6,25 @@ action-recognition model instead of classifying isolated RGB frames.
 
 > **Safety:** This is not a medical device, emergency service, or production monitoring system. Do not perform real falls on a hard surface when testing.
 
-## Team start here
+## Start here
 
-**Read the [clean handoff](docs/team/handoff.md) first.** It gives each numbered
-part its first task, inputs, outputs, and completion proof. The
-[proposal checklist](docs/product/proposal_coverage.md) maps the supplied plan
-to the five parts. Use deeper documents only when your task needs them.
+The engine, FastAPI API and React example/upload flows work locally. Read
+[implementation status](docs/project/implementation_status.md) for verified
+checks and remaining inputs, then [local startup](#run-locally).
 
-Target: a public, no-login recruiter demo with approved fall/normal examples,
-short-video upload, real visual results/incidents, measured performance, and
-reproducible deployment. Webcam and extra behaviours are later work.
+Development is handled by the project owner and coding assistant. Person 5 owns
+hosting, HTTPS, operational configuration and the live release. The former
+five-person collaboration process is retired; see [development](docs/development.md)
+and [deployment](deployment/README.md).
 
-Current status: retained inference/evaluation baseline; public URL and approved
-example videos are pending. The old Gradio UI and launcher have been removed;
-no new API/frontend is implemented by this preparation work.
-Read the [product brief](docs/product/brief.md), [component decisions](docs/project/component_decisions.md),
-and [release criteria](docs/product/release_criteria.md).
+Target: a public no-login research demo with permitted examples, short uploads,
+real pose/confidence/incident results and truthful performance evidence. Public
+hosting and example provenance remain pending. The old Gradio UI stays removed.
 
-| Part to choose | Complete responsibility |
-|---|---|
-| [Person 1](docs/team/person_1.md) | Inference engine and model runtime |
-| [Person 2](docs/team/person_2.md) | API jobs, incidents, and private results |
-| [Person 3](docs/team/person_3.md) | Public frontend and demo experience |
-| [Person 4](docs/team/person_4.md) | Dataset, evaluation, benchmarks, examples, and evidence |
-| [Person 5](docs/team/person_5.md) | Deployment, security, integration, release, and final documentation |
-
-All five usernames are in an [unassigned roster](docs/team/roster.md). Teammates
-choose their parts; no username is mapped to a role. Person 5 coordinates the
-board, integration, README, and combined report, so there is no sixth workstream
-assigned to the project owner.
-
-For ChatGPT/Codex or Claude, start with the [AI workflow](docs/team/ai_workflow.md)
-and [copyable role prompts](docs/team/prompts/README.md). Shared instructions are
-in [AGENTS.md](AGENTS.md), imported by [CLAUDE.md](CLAUDE.md).
-Use the [default stack](docs/project/stack.md) and [v1 contracts](docs/interfaces/README.md)
-so independent AI sessions do not create incompatible components.
-
-The [handoff](docs/team/handoff.md), [ownership](docs/team/ownership.md),
-[backlog](docs/team/backlog.md), and [contribution guide](CONTRIBUTING.md)
-cover collaboration. CODEOWNERS has no active assignments until
-the team chooses; use manual reviews meanwhile. The [documentation index](docs/README.md)
-links the full plan.
-
-The former demo media and training notebooks were intentionally removed from the
-working tree. Future approved demo assets belong in `examples/`, and research
-notebooks belong in `research/`. Neither folder is a training dataset.
+The completed [academic report](docs/project/ICare_Report.docx) follows the teacher
+notes, with [editable text](docs/project/report.md) and actual model execution traces.
+Unverified example clips are disabled by default; use permitted uploads, or
+ICARE_ALLOW_UNVERIFIED_EXAMPLES=1 for local diagnostics only.
 
 ## Pipeline
 
@@ -128,9 +102,11 @@ Confusion counts were TN=541, FP=13, FN=24, and TP=433. A threshold of `0.4039` 
 
 The exported ONNX model accepts `batch x 17 x 48 x 64 x 64` float heatmaps and returns `batch x 2` class probabilities. PyTorch/ONNX verification produced a maximum difference of approximately `2.8e-22`.
 
-## Retained inference worker behavior
+## Legacy live-worker reference
 
-- This section describes retained library behavior, not a running browser app.
+- This section describes the retained live-worker reference. The active
+  example/upload engine instead samples source video at 6 FPS, detects every
+  sampled frame and processes the final window; see [engine guide](icare_app/ENGINE.md).
 - A background worker retains only the newest pending frame; it never builds a latency-producing frame queue.
 - Inference frames are resized to a maximum width of 416 pixels.
 - YOLOX-tiny runs every third processed pose frame, with bounding-box reuse on the two frames between detections. It also runs immediately when no box exists.
@@ -171,10 +147,10 @@ After an incident, the detector is re-armed only after three predictions below `
 ## Repository structure
 
 ```text
-api/                         Person 2 fresh API/job/incident boundary, README only
-frontend/                    Person 3 fresh public UI boundary, README only
-evaluation/                  Person 4 evaluation/benchmark boundary, README only
-configs/                     Person 5 future product configuration, README only
+api/                         FastAPI jobs, ownership, media and reports
+frontend/                    React/TypeScript/Vite browser demo
+evaluation/                  benchmark and robustness tooling
+configs/                     Deployment owner (Person 5) future product configuration, README only
 icare_app/                   existing reusable runtime and prototype references
   inference.py               probability, session, and incident logic
   engine.py, engine_model.py v1 offline engine for the API (see icare_app/ENGINE.md)
@@ -189,13 +165,13 @@ tests/                       focused unit tests
 tools/                       evaluation commands and repository checks
 docs/product/                recruiter demo scope and release acceptance
 docs/interfaces/             v1 engine/API/measurement defaults
-docs/team/                   five numbered briefs, unassigned roster, backlog
+docs/development.md          development scope and verification
 docs/project/                reuse/replace decisions, architecture, evidence, report
 docs/security/               credential review and security findings
-deployment/                  Person 5 hosting/integration/security and runbook
+deployment/                  Deployment owner (Person 5) hosting/integration/security and runbook
 research/                    future approved notebooks and experiment configs
-examples/                    future approved demonstration assets
-.github/                     existing CI/scan, unassigned review rules, issue/PR templates
+examples/                    catalog and two clips; verify provenance before release
+.github/                     CI, credential scan and issue/PR templates
 CONTRIBUTING.md               setup and collaboration workflow
 AGENTS.md                    shared coding-agent instructions
 CLAUDE.md                    imports shared instructions for Claude
@@ -226,23 +202,34 @@ available. Do not tune urgency constants on the held-out test set.
 
 Python 3.11 is the tested local version.
 
-There is no web launcher yet. The old UI was intentionally removed so the API
-and frontend owners can start fresh. These commands set up and verify the
-retained model/evaluation baseline:
+Start the real API from the repository root. Initial model loading may download
+pose weights and take time; `/api/v1/ready` returns 503 until the model is ready.
 
 ```powershell
 py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r api/requirements.txt
 .\.venv\Scripts\python.exe -m tools.check_repository
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m uvicorn api.main:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-Person 1's engine entry point is `icare_app.engine.load_engine` ([guide](icare_app/ENGINE.md));
-Persons 2/3 implement API/UI
-startup; Person 5 verifies and documents combined/container startup. Existing
-audit/evaluation commands still work when their required data are available.
-The non-secret `.env.example` lists planned engine settings; loading/wiring
-them is implementation work, not behavior already supplied by this preparation.
+In a second terminal, use Node 24 or newer and start the frontend:
+
+```powershell
+cd frontend
+npm ci
+npm run dev
+```
+
+Open the URL printed by Vite. Its same-origin proxy preserves Host and forwards
+`/api/v1` to port 8000. Set `ICARE_API_TARGET` in the frontend terminal if using
+a different API port. `.env.example` lists supported environment variables;
+export them in your shell or host configuration (the API does not auto-load .env).
+The engine entry point remains `icare_app.engine.load_engine` ([guide](icare_app/ENGINE.md)).
+
+With Docker running, the added local packaging can be tried using
+`docker compose up --build` and `http://127.0.0.1:7860`. Only Compose configuration
+has been validated here; container build/runtime and public HTTPS remain pending.
+See [deployment](deployment/README.md) and [runbook](deployment/runbook.md).
 
 ## Check before opening a PR
 
@@ -252,7 +239,8 @@ them is implementation work, not behavior already supplied by this preparation.
 ```
 
 GitHub workflows run repository checks, unit tests on Windows and Linux, and
-credential scanning. These files take effect after they are pushed to GitHub.
+credential scanning, plus frontend tests/build. These files take effect after
+they are pushed to GitHub. From frontend/, run `npm test` and `npm run build`.
 Unit tests use synthetic inputs and do not establish real-model accuracy,
 webcam connectivity, or deployment readiness.
 

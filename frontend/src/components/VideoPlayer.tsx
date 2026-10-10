@@ -5,6 +5,7 @@
  */
 import { useEffect, useRef } from 'react';
 import type { Incident, Pose, Prediction } from '../types';
+import { hasRecordedIncident, poseAtTime, predictionAtTime } from '../lib/playback';
 
 // COCO-17 skeleton connections (pairs of keypoint indices)
 const SKELETON: [number, number][] = [
@@ -27,44 +28,13 @@ interface Props {
   incidents: Incident[];
   /** 'fixture' shows no pose overlay — used only while backend clips are pending */
   mode?: 'live' | 'fixture';
+  onTimeChange?: (seconds: number) => void;
 }
 
-export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predictions, incidents, mode = 'live' }: Props) {
+export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predictions, incidents, mode = 'live', onTimeChange }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number | null>(null);
-
-  // Map timestamp_seconds → closest pose (within 0.5s tolerance)
-  const poseMap = (() => {
-    const m = new Map<number, Pose>();
-    poses.forEach(p => m.set(p.timestamp_seconds, p));
-    return m;
-  })();
-
-  const closestPose = (t: number): Pose | null => {
-    let best: Pose | null = null;
-    let bestDelta = 0.5; // 0.5s tolerance
-    poseMap.forEach((p) => {
-      const d = Math.abs(p.timestamp_seconds - t);
-      if (d < bestDelta) { bestDelta = d; best = p; }
-    });
-    return best;
-  };
-
-  const closestPrediction = (t: number): Prediction | null => {
-    let best: Prediction | null = null;
-    let bestDelta = 1.0;
-    predictions.forEach(p => {
-      const d = Math.abs(p.timestamp_seconds - t);
-      if (d < bestDelta) { bestDelta = d; best = p; }
-    });
-    return best;
-  };
-
-  const isFallActive = (t: number): boolean =>
-    incidents.some(inc =>
-      t >= inc.detected_at_seconds && t < inc.detected_at_seconds + 4
-    );
 
   useEffect(() => {
     const video = videoRef.current;
@@ -73,7 +43,8 @@ export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predicti
 
     function drawOverlay() {
       if (!video || !canvas) return;
-      const ctx = canvas.getContext('2d')!;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
       const dw = canvas.width;
       const dh = canvas.height;
       ctx.clearRect(0, 0, dw, dh);
@@ -90,9 +61,9 @@ export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predicti
       const t = video.currentTime;
       const scaleX = dw / frameWidth;
       const scaleY = dh / frameHeight;
-      const pose = closestPose(t);
-      const pred = closestPrediction(t);
-      const falling = isFallActive(t);
+      const pose = poseAtTime(poses, t);
+      const pred = predictionAtTime(predictions, t);
+      const falling = hasRecordedIncident(incidents, t);
 
       if (pose) {
         // Bounding box
@@ -188,11 +159,15 @@ export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predicti
     };
 
     video.addEventListener('loadedmetadata', sync);
-    new ResizeObserver(sync).observe(video);
+    const observer = new ResizeObserver(sync);
+    observer.observe(video);
+    sync();
     rafRef.current = requestAnimationFrame(drawOverlay);
 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      video.removeEventListener('loadedmetadata', sync);
+      observer.disconnect();
     };
   }, [mediaUrl, frameWidth, frameHeight, poses, predictions, incidents, mode]);
 
@@ -204,6 +179,9 @@ export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predicti
         src={mediaUrl}
         controls
         playsInline
+        onTimeUpdate={event => onTimeChange?.(event.currentTarget.currentTime)}
+        onSeeked={event => onTimeChange?.(event.currentTarget.currentTime)}
+        onLoadedMetadata={event => onTimeChange?.(event.currentTarget.currentTime)}
         style={{ width: '100%', display: 'block', borderRadius: '8px' }}
       />
       <canvas

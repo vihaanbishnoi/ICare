@@ -9,13 +9,14 @@ export default defineConfig({
     // and the SameSite=strict cookie is not rejected.
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
+        target: process.env.ICARE_API_TARGET ?? 'http://127.0.0.1:8000',
+        // Preserve the browser-facing Host: the API checks Origin against it.
+        changeOrigin: false,
       },
     },
   },
   build: {
-    // Output inside frontend/icare-frontend/dist — Person 5 serves this from /
+    // Production proxy serves frontend/dist from the same origin as /api/v1.
     outDir: 'dist',
   },
 })

@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 from api.engine import Engine
 from api.incidents import IncidentTracker
-from api.results import build_result, write_outputs
+from api.results import ResultTooLarge, build_result, write_outputs
 from api.schemas import Pose, Prediction
 from api.store import Store, utc_now
 
@@ -35,20 +35,28 @@ class InvalidEngineOutput(Exception):
 
 class JobRunner:
     def __init__(
-        self, store: Store, engine: Engine | None, jobs_dir: Path, timeout_seconds: float
+        self, store: Store, engine: Engine | None, jobs_dir: Path, timeout_seconds: float,
+        max_result_bytes: int = 5 * 1024 * 1024,
     ) -> None:
         self.store = store
         self.engine = engine
         self.jobs_dir = jobs_dir
         self.timeout_seconds = timeout_seconds
+        self.max_result_bytes = max_result_bytes
         self._pending: deque[str] = deque()
         self._wake = threading.Condition()
         self._cancel_events: dict[str, threading.Event] = {}
         self._stopping = False
+        self._timed_out = threading.Event()
         self._thread = threading.Thread(target=self._loop, name="icare-job-worker", daemon=True)
 
     def start(self) -> None:
         self._thread.start()
+
+    @property
+    def available(self) -> bool:
+        """An unresponsive timed-out engine must not accept more work."""
+        return not self._timed_out.is_set()
 
     def stop(self) -> None:
         with self._wake:
@@ -94,6 +102,7 @@ class JobRunner:
             finally:
                 with self._wake:
                     self._cancel_events.pop(job_id, None)
+                    self._timed_out.clear()
 
     def _run(self, job_id: str, cancel_event: threading.Event) -> None:
         if not self.store.transition(job_id, ("queued",), state="running", progress=None):
@@ -105,8 +114,13 @@ class JobRunner:
         timed_out = threading.Event()
 
         def on_timeout() -> None:
-            timed_out.set()
-            cancel_event.set()
+            with self._wake:
+                if self._cancel_events.get(job_id) is not cancel_event:
+                    return  # Late timer callback after the job was released.
+                timed_out.set()
+                cancel_event.set()
+                self._timed_out.set()
+                self._fail(job_id, "timeout", "Analysis took longer than the time limit.")
 
         timer = threading.Timer(self.timeout_seconds, on_timeout)
         timer.daemon = True
@@ -143,6 +157,8 @@ class JobRunner:
         started = monotonic()
         timer.start()
         try:
+            if hasattr(self.engine, 'wait_ready'):
+                self.engine.wait_ready(cancel_event)
             summary = self.engine.analyze_video(
                 Path(job["media_path"]),
                 on_pose=on_pose,
@@ -180,7 +196,11 @@ class JobRunner:
         except (KeyError, TypeError, ValueError):
             self._fail(job_id, "invalid_engine_output", "The engine summary was incomplete.")
             return
-        write_outputs(job_dir, result)
+        try:
+            write_outputs(job_dir, result, self.max_result_bytes)
+        except ResultTooLarge:
+            self._fail(job_id, 'result_too_large', 'The analysis exceeded its result storage budget.')
+            return
         for incident in incidents:
             self.store.add_incident(incident)
         if not self.store.transition(

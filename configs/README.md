@@ -1,8 +1,8 @@
 # Product configuration boundary
 
-Person 5 coordinates environment/origin/job limits for the
+Deployment owner (Person 5) coordinates environment/origin/job limits for the
 [default stack](../docs/project/stack.md). No configuration loader is implemented.
-Persons 1/4 own model/preprocessing/threshold meaning and Persons 2/5 own
+Development own model/preprocessing/threshold meaning and Development/5 own
 ownership/limits/retention.
 
 The root .env.example contains planned engine variable names; retained libraries

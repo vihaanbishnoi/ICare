@@ -6,19 +6,19 @@ environment. Nine existing synthetic tests are retained unchanged.
 
 | Existing test | Relevant part |
 | --- | --- |
-| test_inference_logging.py | Person 2 with Person 1 lifecycle input |
-| test_pose_signals.py | Persons 1 and 4 |
-| test_subject_audit.py | Person 4 |
-| test_reports.py | Person 2 |
-| test_engine.py | Person 1 (engine lifecycle; also runs the engine inside the API) |
+| test_inference_logging.py | Development with Development lifecycle input |
+| test_pose_signals.py | Development |
+| test_subject_audit.py | Development |
+| test_reports.py | Development |
+| test_engine.py | Development (engine lifecycle; also runs the engine inside the API) |
 
-Person 1 added engine/lifecycle/completion checks (synthetic adapters; real-ONNX cases skip without onnxruntime). Person 2 adds job/isolation/
-ownership/incident/API integration checks. Person 3 adds browser journeys/loading/
-errors/mobile checks. Person 4 verifies real-model metrics and robustness.
-Person 5 connects these to CI/staging and validates restart/rollback/limits.
+Development added engine/lifecycle/completion checks (synthetic adapters; real-ONNX cases skip without onnxruntime). Development adds job/isolation/
+ownership/incident/API integration checks. Development adds browser journeys/loading/
+errors/mobile checks. Development verifies real-model metrics and robustness.
+Deployment owner (Person 5) connects these to CI/staging and validates restart/rollback/limits.
 
 Existing CI discovers root Python test files; new framework/directory discovery
-must be deliberately configured by Person 5. A new test folder alone is not wired
+must be deliberately configured by Deployment owner (Person 5). A new test folder alone is not wired
 into CI. Critical inference/API tests are first-release requirements.
 
 Use synthetic fixtures where meaningful, but never confuse them with measured

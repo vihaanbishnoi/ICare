@@ -3,8 +3,8 @@
  * No fake upload progress. No Math.random(). No stub.
  */
 import { useEffect, useState } from 'react';
-import { fetchExamples, fetchResults, startExampleJob } from '../api/client';
-import type { Example, Job, Result } from '../types';
+import { fetchExamples, startExampleJob } from '../api/client';
+import type { Example, Job } from '../types';
 import { useJobPoller } from '../hooks/useJobPoller';
 import { VideoPlayer } from './VideoPlayer';
 import { ResultsPanel } from './ResultsPanel';
@@ -42,15 +42,16 @@ function ProgressBar({ progress }: { progress: number | null }) {
 }
 
 export function ExamplePanel({ initialOutcome }: Props) {
-  const [phase, setPhase] = useState<Phase>('loading_examples');
+  const [localPhase, setPhase] = useState<Phase>('loading_examples');
   const [examples, setExamples] = useState<Example[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
-  const [result, setResult] = useState<Result | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [localError, setErrorMsg] = useState<string | null>(null);
   const [videoTime, setVideoTime] = useState(0);
 
-  const { job } = useJobPoller(phase === 'polling' ? jobId : null);
+  const { job, result, error, retryable: retryStatus, retry, cancel, cancelling } = useJobPoller(jobId);
+  const phase: Phase = jobId ? (result ? 'complete' : error ? 'error' : 'polling') : localPhase;
+  const errorMsg = error ?? localError;
 
   // Load examples on mount
   useEffect(() => {
@@ -63,7 +64,7 @@ export function ExamplePanel({ initialOutcome }: Props) {
           : list[0];
         if (preferred) setSelectedId(preferred.example_id);
         setPhase(list.length ? 'ready' : 'error');
-        if (!list.length) setErrorMsg('No approved examples are available yet. Person 4\'s clips are pending.');
+        if (!list.length) setErrorMsg('No public examples are available yet. You can analyze your own permitted video in Upload Your Video.');
       })
       .catch(e => {
         setPhase('error');
@@ -71,31 +72,19 @@ export function ExamplePanel({ initialOutcome }: Props) {
       });
   }, [initialOutcome]);
 
-  // Transition from polling → complete when job finishes
-  useEffect(() => {
-    if (!job || phase !== 'polling') return;
-    if (job.state === 'completed') {
-      fetchResults(job.job_id)
-        .then(r => { setResult(r); setPhase('complete'); })
-        .catch(e => { setErrorMsg(e instanceof Error ? e.message : 'Failed to fetch results'); setPhase('error'); });
-    } else if (job.state === 'failed' || job.state === 'cancelled') {
-      setErrorMsg(job.error?.message ?? `Job ${job.state}.`);
-      setPhase('error');
-    }
-  }, [job, phase]);
-
   const handleRun = async () => {
     if (!selectedId) return;
+    setJobId(null);
     setPhase('submitting');
-    setResult(null);
     setErrorMsg(null);
+    setVideoTime(0);
     try {
       const j = await startExampleJob(selectedId);
       setJobId(j.job_id);
-      setPhase(j.state === 'completed' ? 'polling' : 'polling');
+      setPhase('polling');
     } catch (e: unknown) {
-      const err = e as { status?: number; message?: string };
-      if (err.status === 503) {
+      const err = e as { status?: number; message?: string; code?: string };
+      if (err.status === 503 && err.code === 'model_unavailable') {
         setErrorMsg('The inference model is not ready. The backend may still be starting.');
       } else {
         setErrorMsg(err.message ?? 'Failed to start job.');
@@ -106,8 +95,8 @@ export function ExamplePanel({ initialOutcome }: Props) {
 
   const handleReset = () => {
     setJobId(null);
-    setResult(null);
     setErrorMsg(null);
+    setVideoTime(0);
     setPhase('ready');
   };
 
@@ -146,6 +135,12 @@ export function ExamplePanel({ initialOutcome }: Props) {
           </div>
         )}
 
+        {phase === 'polling' && (
+          <button className="btn btn--outline btn--sm" onClick={() => void cancel()} disabled={cancelling}>
+            {cancelling ? 'Cancelling…' : 'Cancel Analysis'}
+          </button>
+        )}
+
         {/* Video player — only shown when result is ready */}
         {phase === 'complete' && result ? (
           <>
@@ -157,6 +152,7 @@ export function ExamplePanel({ initialOutcome }: Props) {
               predictions={result.predictions}
               incidents={result.incidents}
               mode="live"
+              onTimeChange={setVideoTime}
             />
             <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem' }}>
               <button className="btn btn--outline btn--sm" onClick={handleReset} id="example-reset-btn">
@@ -206,8 +202,11 @@ export function ExamplePanel({ initialOutcome }: Props) {
                 <div className="error-state__icon">⚠</div>
                 <p className="error-state__message">{errorMsg}</p>
                 {examples.length > 0 && (
-                  <button className="btn btn--outline btn--sm" onClick={handleReset} id="example-error-retry-btn">
-                    Try Again
+                  <button className="btn btn--outline btn--sm" onClick={() => {
+                    if (retryStatus && jobId) retry();
+                    else handleReset();
+                  }} id="example-error-retry-btn">
+                    {retryStatus ? 'Retry Status Check' : 'Try Again'}
                   </button>
                 )}
               </div>

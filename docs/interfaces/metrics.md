@@ -1,7 +1,7 @@
 # Measurement and evidence contract
 
-Person 4 owns definitions/provenance; Persons 1 and 2 emit data. Person 3 renders
-approved results and Person 5 publishes evidence.
+Development owns definitions, emitted measurements and browser presentation.
+Person 5 records the host environment and deployed evidence.
 
 | Metric | Required evidence |
 | --- | --- |
@@ -31,3 +31,7 @@ Missing onset means unknown latency. Unused GPU is not applicable. Planned work
 is pending, never zero or an invented improvement. Existing precision 97.09%,
 recall 94.75%, F1 95.90% describe the reported group-aware classifier test, not
 deployed service or confirmed subject-independent performance.
+
+Model resource samples refer to the isolated model process. Process CPU may
+exceed 100 percent because one logical core is the denominator. Normal exposure,
+failed clips and unverified labels are reported separately in the benchmark harness.

@@ -495,7 +495,7 @@ class ConfigAndLoadingTests(EngineTestCase):
             "bad = [m for m in ('onnxruntime', 'rtmlib', 'psutil') if m in sys.modules];"
             "sys.exit(1 if bad else 0)"
         )
-        result = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True)
+        result = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr.decode())
 
 

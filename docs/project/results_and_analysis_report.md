@@ -1,8 +1,11 @@
-# ICare Person 4: Results and Analysis Report
+# ICare Development: Results and Analysis Report
 
 ## Executive Summary
 
-This report documents the baseline evaluation, metric calculations, operational throughput, alert latency definitions, and robustness protocols for the ICare Pose-Based Fall Detection system. ICare uses person detection (YOLOX-tiny), pose keypoint estimation (RTMPose-s COCO-17), and temporal action recognition (fine-tuned binary PoseC3D) to detect human falls from video sequences without relying on single-frame RGB classification.
+This report records historical classification results and operational measurement
+protocols. Historical metrics were not reproduced in the current integration
+check. Robustness and hard-negative protocols below are planned evaluations,
+not completed experiments. See [current evidence](implementation_status.md).
 
 ---
 
@@ -33,8 +36,10 @@ True Fall    (FN/TP)         24                433
 
 - **True Negatives ($\text{TN} = 541$)**: Correctly identified normal daily activities.
 - **True Positives ($\text{TP} = 433$)**: Correctly identified physical fall events.
-- **False Negatives ($\text{FN} = 24$)**: Missed fall events (primarily slow controlled descents onto furniture).
-- **False Positives ($\text{FP} = 13$)**: Normal actions misclassified as falls (e.g., rapid crouching or collapse-like sitting).
+- **False Negatives ($\text{FN} = 24$)**: Missed fall labels; causes require review
+  of the actual misclassified clips and have not been established.
+- **False Positives ($\text{FP} = 13$)**: Normal labels misclassified as falls;
+  activity-specific causes have not been established.
 
 ---
 
@@ -94,4 +99,9 @@ To prevent false alarms during routine movement, six specific hard-negative acti
 ## 4. Evidence Integrity & Missing Data Boundaries
 
 1. **Group-Aware vs. Subject-Disjoint**: The reported 96.34% accuracy describes the group-aware held-out test split. Because subject identifiers were unavailable in the historical dataset, this performance must not be claimed as subject-independent generalization.
-2. **Media Asset Provenance**: Public demonstration media clips in `examples/catalog.json` are marked with `provenance_status: "pending"` until approved, rights-verified public video clips are procured.
+2. **Media Asset Provenance**: The catalog contains approval labels, but original
+   source links, rights and independent labels/onset still need verification.
+   Do not infer permission from the metadata label alone.
+3. **Local integration**: Two six-second clips completed through the real CPU API
+   and browser; this is a smoke test, not a controlled throughput/accuracy study.
+   CPU/RAM were unmeasured in that runtime. No latency or robustness gain is claimed.

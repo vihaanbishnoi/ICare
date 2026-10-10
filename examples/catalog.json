@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "status": "approved",
-  "description": "Demonstration asset catalog with approved public video clips.",
+  "status": "pending_source_verification",
+  "description": "Local diagnostic clips. Public exposure is disabled until source, rights and labels are verified.",
   "examples": [
     {
       "example_id": "fall_example_01",
@@ -11,21 +11,29 @@
       "duration_seconds": 6.0,
       "analysis_mode": "on_demand",
       "model_version": null,
-      "provenance": "UR Fall Detection Dataset (University of Rzeszow, CC BY 4.0)",
+      "provenance": "Original source and redistribution rights unverified",
       "file": "fall_example_01.mp4",
-      "annotated_onset_seconds": 2.5
+      "annotated_onset_seconds": null,
+      "rights_status": "pending",
+      "label_status": "pending",
+      "source_url": null,
+      "license": null
     },
     {
       "example_id": "normal_example_01",
-      "title": "Indoor Single-Person Walking Activity",
+      "title": "Normal Activity Diagnostic Clip",
       "expected_outcome": "no_fall",
       "video_url": "/api/v1/examples/normal_example_01/media",
       "duration_seconds": 6.0,
       "analysis_mode": "on_demand",
       "model_version": null,
-      "provenance": "UR Fall Detection Dataset (University of Rzeszow, CC BY 4.0)",
+      "provenance": "Original source and redistribution rights unverified",
       "file": "normal_example_01.mp4",
-      "annotated_onset_seconds": null
+      "annotated_onset_seconds": null,
+      "rights_status": "pending",
+      "label_status": "pending",
+      "source_url": null,
+      "license": null
     }
   ]
 }
