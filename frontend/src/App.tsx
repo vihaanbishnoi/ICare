@@ -67,7 +67,7 @@ function HeroCanvas() {
           const dy = particles[i].y - particles[j].y;
           const d = Math.sqrt(dx * dx + dy * dy);
           if (d < 130) {
-            ctx.strokeStyle = `rgba(88,166,255,${(1 - d / 130) * 0.22})`;
+            ctx.strokeStyle = `rgba(255,161,22,${(1 - d / 130) * 0.22})`;
             ctx.lineWidth = 0.6;
             ctx.beginPath();
             ctx.moveTo(particles[i].x, particles[i].y);
@@ -80,7 +80,7 @@ function HeroCanvas() {
         const dx = p.x - mouseX, dy = p.y - mouseY;
         const d = Math.sqrt(dx * dx + dy * dy);
         const alpha = d < 150 ? 0.85 - d / 150 * 0.5 : 0.3;
-        ctx.fillStyle = `rgba(88,166,255,${alpha})`;
+        ctx.fillStyle = `rgba(255,161,22,${alpha})`;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fill();
@@ -118,9 +118,9 @@ function Nav({ onTabNav }: { onTabNav: (tab: 'fall' | 'normal' | 'upload') => vo
       <div className="nav__inner">
         <a href="#" className="nav__logo" aria-label="ICare Home">
           <svg className="nav__logo-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-            <circle cx="16" cy="16" r="14" stroke="#22d3ee" strokeWidth="2" />
-            <path d="M10 16 L14 20 L22 12" stroke="#22d3ee" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            <circle cx="16" cy="16" r="4" fill="rgba(34,211,238,0.15)" />
+            <circle cx="16" cy="16" r="14" stroke="#ffa116" strokeWidth="2" />
+            <path d="M10 16 L14 20 L22 12" stroke="#ffa116" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="16" cy="16" r="4" fill="rgba(255,161,22,0.15)" />
           </svg>
           <span className="nav__logo-text">ICare</span>
           <span className="nav__badge">Research</span>
@@ -426,8 +426,8 @@ function Footer({ onTabNav }: { onTabNav: (t: DemoTab) => void }) {
           <div className="footer__brand">
             <a href="#" className="nav__logo footer__logo" aria-label="ICare Home">
               <svg className="nav__logo-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-                <circle cx="16" cy="16" r="14" stroke="#22d3ee" strokeWidth="2" />
-                <path d="M10 16 L14 20 L22 12" stroke="#22d3ee" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="16" cy="16" r="14" stroke="#ffa116" strokeWidth="2" />
+                <path d="M10 16 L14 20 L22 12" stroke="#ffa116" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <span className="nav__logo-text">ICare</span>
             </a>
