@@ -35,6 +35,7 @@ class ClipAnnotation:
     fall_onset_seconds: Optional[float] = None
     duration_seconds: Optional[float] = None
     provenance_status: str = "pending"
+    label_status: str = 'verified'
 
 
 @dataclass
@@ -43,7 +44,7 @@ class EvaluationRecord:
     clip_id: str
     true_label: str
     predicted_label: str
-    max_fall_probability: float
+    max_fall_probability: Optional[float]
     incidents_detected: int
     first_incident_timestamp_seconds: Optional[float]
     alert_latency_seconds: Optional[float]
@@ -54,6 +55,7 @@ class EvaluationRecord:
     mean_pose_inference_ms: Optional[float]
     cpu_percent_mean: Optional[float]
     ram_mb_peak: Optional[float]
+    error_code: Optional[str] = None
 
 
 @dataclass
@@ -63,6 +65,9 @@ class MetricResults:
     Unmeasured values stay None (never zero or fabricated numbers).
     """
     total_clips: int = 0
+    successful_clips: int = 0
+    failed_clips: int = 0
+    unverified_labels: int = 0
     tp: int = 0
     fp: int = 0
     tn: int = 0
@@ -76,6 +81,7 @@ class MetricResults:
     alert_latency_p95_seconds: Optional[float] = None
     false_alarms_per_hour: Optional[float] = None
     total_observed_hours: Optional[float] = None
+    normal_observed_hours: Optional[float] = None
     avg_fps: Optional[float] = None
     avg_model_calls_per_min: Optional[float] = None
     cpu_percent_mean: Optional[float] = None
@@ -127,6 +133,7 @@ class BenchmarkHarness:
         total_proc_time = 0.0
         total_model_calls = 0
         observed_seconds_list: List[float] = []
+        normal_seconds: List[float] = []
         total_false_incidents = 0
 
         cpu_samples: List[float] = []
@@ -134,10 +141,17 @@ class BenchmarkHarness:
 
         for rec in records:
             annot = annot_map.get(rec.clip_id)
+            if rec.error_code or rec.predicted_label.startswith('Failed'):
+                results.failed_clips += 1
+                continue
+            results.successful_clips += 1
             is_true_fall = (rec.true_label.lower() == "fall")
             is_pred_fall = (rec.incidents_detected > 0 or rec.predicted_label.lower() == "fall")
+            verified = annot is not None and annot.label_status == 'verified' and rec.true_label.lower() in ('fall', 'no_fall', 'no fall')
 
-            if is_true_fall and is_pred_fall:
+            if not verified:
+                results.unverified_labels += 1
+            elif is_true_fall and is_pred_fall:
                 results.tp += 1
             elif not is_true_fall and is_pred_fall:
                 results.fp += 1
@@ -147,7 +161,7 @@ class BenchmarkHarness:
             elif is_true_fall and not is_pred_fall:
                 results.fn += 1
 
-            if is_true_fall and rec.alert_latency_seconds is not None:
+            if verified and is_true_fall and rec.alert_latency_seconds is not None and rec.alert_latency_seconds >= 0:
                 latencies.append(rec.alert_latency_seconds)
 
             total_frames += rec.total_frames_processed
@@ -156,6 +170,8 @@ class BenchmarkHarness:
 
             if annot and annot.duration_seconds is not None and annot.duration_seconds > 0:
                 observed_seconds_list.append(annot.duration_seconds)
+                if verified and not is_true_fall:
+                    normal_seconds.append(annot.duration_seconds)
 
             if rec.cpu_percent_mean is not None:
                 cpu_samples.append(rec.cpu_percent_mean)
@@ -168,14 +184,14 @@ class BenchmarkHarness:
 
         if total > 0:
             results.overall_accuracy = (tp + tn) / total
-            results.precision = (tp / (tp + fp)) if (tp + fp) > 0 else 0.0
-            results.recall = (tp / (tp + fn)) if (tp + fn) > 0 else 0.0
+            results.precision = (tp / (tp + fp)) if (tp + fp) > 0 else None
+            results.recall = (tp / (tp + fn)) if (tp + fn) > 0 else None
             if (results.precision is not None and results.recall is not None and (results.precision + results.recall) > 0):
                 results.f1_score = 2 * (results.precision * results.recall) / (results.precision + results.recall)
             else:
-                results.f1_score = 0.0
-            spec = (tn / (tn + fp)) if (tn + fp) > 0 else 0.0
-            results.balanced_accuracy = (results.recall + spec) / 2.0
+                results.f1_score = 0.0 if results.precision is not None and results.recall is not None else None
+            spec = (tn / (tn + fp)) if (tn + fp) > 0 else None
+            results.balanced_accuracy = (results.recall + spec) / 2.0 if results.recall is not None and spec is not None else None
 
         # Latency metrics
         if latencies:
@@ -191,8 +207,9 @@ class BenchmarkHarness:
         if observed_seconds_list:
             total_obs_sec = sum(observed_seconds_list)
             results.total_observed_hours = total_obs_sec / 3600.0
-            if results.total_observed_hours > 0:
-                results.false_alarms_per_hour = total_false_incidents / results.total_observed_hours
+        if normal_seconds:
+            results.normal_observed_hours = sum(normal_seconds) / 3600.0
+            results.false_alarms_per_hour = total_false_incidents / results.normal_observed_hours
 
         # Resource usage: stay None if unmeasured
         if cpu_samples:
@@ -237,14 +254,14 @@ class BenchmarkHarness:
             summary = {}
             metrics = {}
 
-        max_prob = max((p.get("fall_probability", 0.0) for p in predictions), default=0.0)
+        max_prob = max((p['fall_probability'] for p in predictions), default=None)
         if error_code is not None:
             pred_label = f"Failed ({error_code})"
         else:
             pred_label = "fall" if incidents > 0 else "no_fall"
 
         lat_sec: Optional[float] = None
-        if incidents > 0 and first_incident_ts is not None and annotation.fall_onset_seconds is not None:
+        if annotation.label_status == 'verified' and incidents > 0 and first_incident_ts is not None and annotation.fall_onset_seconds is not None:
             lat_sec = first_incident_ts - annotation.fall_onset_seconds
 
         fps = metrics.get("processed_frames_per_second")
@@ -265,4 +282,5 @@ class BenchmarkHarness:
             mean_pose_inference_ms=metrics.get("mean_pose_inference_ms"),
             cpu_percent_mean=metrics.get("process_cpu_percent_mean"),
             ram_mb_peak=metrics.get("process_rss_mb_peak"),
+            error_code=error_code,
         )

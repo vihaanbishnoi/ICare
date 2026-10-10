@@ -1,8 +1,9 @@
 # API contract version 1
 
-Implementation owner Person 2; consumer Person 3; deployment/privacy reviewer
-Person 5. Use FastAPI, prefix /api/v1, JSON snake_case fields, and seconds for
-source-relative time. This contract is the starting default; it is not implemented.
+Implementation owner Development; consumer Development; deployment/privacy reviewer
+Deployment owner (Person 5). Use FastAPI, prefix /api/v1, JSON snake_case fields, and seconds for
+source-relative time. This contract describes the implemented local API; public
+deployment remains pending. See [status](../project/implementation_status.md).
 
 ## Routes and transport
 
@@ -60,11 +61,13 @@ Prediction: timestamp_seconds, fall_probability in [0,1],
 window_start_seconds, source_pose_count, inference_ms, optional urgency/reliability.
 Pose: timestamp_seconds, bbox_xyxy array of four pixel coordinates, and
 keypoints array of 17 [x,y,confidence] entries in COCO order.
+The third keypoint value is RTMPose's finite raw score, which can
+exceed 1; it is not a calibrated fall probability. Preserve it for model parity.
 Coordinates reference frame_width/frame_height of the original source video.
 The frontend scales from those dimensions to displayed video content.
 
 Synchronize playback to source-relative timestamps. Missing poses have no overlay;
-they do not inherit another person's/job's keypoints. Person 4's labels remain
+they do not inherit another person's/job's keypoints. Development's labels remain
 separate from predictions.
 
 ## Incident document
@@ -77,13 +80,13 @@ probability. Report onset/latency only with valid independent annotations.
 
 ## Anonymous browser ownership
 
-No account login gate. Person 2 establishes an opaque random browser session in
+No account login gate. Development establishes an opaque random browser session in
 an HttpOnly cookie, with SameSite restrictions and Secure on public HTTPS.
 Persist a server-side owner reference for each job and verify it on every owned
 status/media/result/report/cancellation request. Public examples are not private uploads.
 
 Use same-origin deployment. Validate mutating request origins and ownership;
-random job IDs alone are not authorization. Person 5 verifies proxy/cookie behavior.
+random job IDs alone are not authorization. Deployment owner (Person 5) verifies proxy/cookie behavior.
 Do not expose private uploaded media as static frontend assets.
 
 ## Errors and initial limits
@@ -95,5 +98,5 @@ input, 404 for unknown/not-owned resources, 409 for incomplete state,
 Initial defaults to implement and measure: MP4 upload only; 50 MB; 60 seconds;
 one active inference job; at most five queued jobs; ten-minute execution timeout;
 24-hour maximum upload/result retention. Validate content, not only extension.
-Persons 2/5 may tighten documented limits after the first host measurement;
+Development/5 may tighten documented limits after the first host measurement;
 frontend labels and tests must match the server's actual limits.

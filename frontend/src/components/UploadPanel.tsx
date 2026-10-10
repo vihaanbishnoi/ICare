@@ -2,9 +2,9 @@
  * UploadPanel — real multipart upload to /api/v1/jobs/upload, job polling,
  * then video player + results. No Math.random(). No fake progress.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchResults, startUploadJob } from '../api/client';
-import type { Job, Result } from '../types';
+import { useCallback, useRef, useState } from 'react';
+import { startUploadJob } from '../api/client';
+import type { Job } from '../types';
 import { useJobPoller } from '../hooks/useJobPoller';
 import { VideoPlayer } from './VideoPlayer';
 import { ResultsPanel } from './ResultsPanel';
@@ -23,28 +23,17 @@ function JobBadge({ state }: { state: Job['state'] }) {
 }
 
 export function UploadPanel() {
-  const [phase, setPhase] = useState<Phase>('idle');
+  const [localPhase, setPhase] = useState<Phase>('idle');
   const [fileName, setFileName] = useState('');
   const [jobId, setJobId] = useState<string | null>(null);
-  const [result, setResult] = useState<Result | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [localError, setErrorMsg] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [videoTime, setVideoTime] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { job } = useJobPoller(phase === 'polling' ? jobId : null);
-
-  // Transition polling → complete
-  useEffect(() => {
-    if (!job || phase !== 'polling') return;
-    if (job.state === 'completed') {
-      fetchResults(job.job_id)
-        .then(r => { setResult(r); setPhase('complete'); })
-        .catch(e => { setErrorMsg(e instanceof Error ? e.message : 'Failed to fetch results'); setPhase('error'); });
-    } else if (job.state === 'failed' || job.state === 'cancelled') {
-      setErrorMsg(job.error?.message ?? `Job ${job.state}.`);
-      setPhase('error');
-    }
-  }, [job, phase]);
+  const { job, result, error, retryable: retryStatus, retry, cancel, cancelling } = useJobPoller(jobId);
+  const phase: Phase = jobId ? (result ? 'complete' : error ? 'error' : 'polling') : localPhase;
+  const errorMsg = error ?? localError;
 
   const handleFile = useCallback(async (file: File) => {
     // Client-side validation (server also validates)
@@ -60,9 +49,10 @@ export function UploadPanel() {
     }
 
     setFileName(file.name);
+    setJobId(null);
     setPhase('uploading');
-    setResult(null);
     setErrorMsg(null);
+    setVideoTime(0);
 
     try {
       const j = await startUploadJob(file);
@@ -70,7 +60,7 @@ export function UploadPanel() {
       setPhase('polling');
     } catch (e: unknown) {
       const err = e as { status?: number; message?: string; code?: string };
-      if (err.status === 503) {
+      if (err.status === 503 && err.code === 'model_unavailable') {
         setErrorMsg('The inference model is not ready. The backend may still be starting.');
       } else if (err.status === 413 || err.code === 'file_too_large') {
         setErrorMsg('File rejected by server: too large (max 50 MB).');
@@ -99,9 +89,9 @@ export function UploadPanel() {
 
   const handleReset = () => {
     setJobId(null);
-    setResult(null);
     setErrorMsg(null);
     setFileName('');
+    setVideoTime(0);
     setPhase('idle');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -156,33 +146,39 @@ export function UploadPanel() {
           </div>
         )}
 
-        {phase === 'polling' && job && (
+        {phase === 'polling' && (
           <div className="job-card" id="upload-job-card">
             <div className="job-card__header">
               <span className="job-card__name" id="upload-filename">{fileName}</span>
-              <JobBadge state={job.state} />
+              <JobBadge state={job?.state ?? 'queued'} />
             </div>
             <div className="job-card__progress">
               <div className="job-progress-bar">
                 <div
                   className="job-progress-fill"
                   style={{
-                    width: job.progress !== null ? `${Math.round(job.progress * 100)}%` : '40%',
+                    width: job?.progress != null ? `${Math.round(job.progress * 100)}%` : '40%',
                     transition: 'width 0.4s ease',
                     // Indeterminate pulse when progress is null
-                    animation: job.progress === null ? 'progress-pulse 1.5s ease-in-out infinite' : undefined,
+                    animation: job?.progress == null ? 'progress-pulse 1.5s ease-in-out infinite' : undefined,
                   }}
                 />
               </div>
               <span className="job-card__pct" id="upload-pct">
-                {job.progress !== null ? `${Math.round(job.progress * 100)}%` : '—'}
+                {job?.progress != null ? `${Math.round(job.progress * 100)}%` : '—'}
               </span>
             </div>
             <p className="job-card__message" id="upload-message">
-              {job.state === 'queued' && 'Queued — waiting for worker…'}
-              {job.state === 'running' && 'Running inference…'}
+              {(!job || job.state === 'queued') && 'Queued — waiting for worker…'}
+              {job?.state === 'running' && 'Running inference…'}
             </p>
           </div>
+        )}
+
+        {phase === 'polling' && (
+          <button className="btn btn--outline btn--sm" onClick={() => void cancel()} disabled={cancelling}>
+            {cancelling ? 'Cancelling…' : 'Cancel Analysis'}
+          </button>
         )}
 
         {phase === 'complete' && result && (
@@ -195,6 +191,7 @@ export function UploadPanel() {
               predictions={result.predictions}
               incidents={result.incidents}
               mode="live"
+              onTimeChange={setVideoTime}
             />
             <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem' }}>
               <button className="btn btn--outline btn--sm" onClick={handleReset} id="upload-reset-btn">
@@ -208,8 +205,11 @@ export function UploadPanel() {
           <div className="error-state" role="alert">
             <div className="error-state__icon">⚠</div>
             <p className="error-state__message">{errorMsg}</p>
-            <button className="btn btn--outline btn--sm" onClick={handleReset} id="upload-error-retry-btn">
-              Try Again
+            <button className="btn btn--outline btn--sm" onClick={() => {
+              if (retryStatus && jobId) retry();
+              else handleReset();
+            }} id="upload-error-retry-btn">
+              {retryStatus ? 'Retry Status Check' : 'Try Again'}
             </button>
           </div>
         )}
@@ -217,7 +217,7 @@ export function UploadPanel() {
 
       {/* Right column — upload info or results */}
       {phase === 'complete' && result ? (
-        <ResultsPanel result={result} />
+        <ResultsPanel result={result} currentTime={videoTime} />
       ) : (
         <div className="upload-info" id="upload-limits">
           <h3 className="upload-info__title">Upload Requirements</h3>

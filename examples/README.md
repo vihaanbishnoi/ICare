@@ -1,20 +1,17 @@
-# Approved demonstration assets
+# Example media and provenance
 
-Owner: Person 4, individual unassigned. Approved fall and normal-activity examples
-are essential to the first public release, not optional repository decoration.
-Person 3 presents them and Person 2 exposes their genuine inference results.
+The two existing clips remain diagnostic inputs. Their previous UR-dataset,
+CC-BY license and onset metadata lacked supporting source evidence and have
+been removed. Catalog rights and independent labels are pending verification.
+The default public API does not list or serve unverified clips.
 
-The previous demo media were intentionally removed. Add only recordings that
-the team has permission to publish, with a short description of their expected
-outcome and provenance. An example is not automatically training data or
-evaluation evidence.
+Set ICARE_ALLOW_UNVERIFIED_EXAMPLES=1 only for local diagnostic executions.
+Never use that override for a public release. Verified entries require
+rights_status=verified, source_url, license and label_status=verified.
+Record the actual originating file/source, permission, independently reviewed
+outcome and onset (when known). A model prediction does not establish a label.
+The owner's Kaggle training-dataset URL does not identify these two clips.
 
-Keep private recordings under ignored local data/test-video directories. Prefer
-small representative examples; discuss large media before committing it. Do not
-stage unsafe falls to produce demonstration footage.
-
-For each approved clip, record its ID, source/permission, duration, expected
-outcome, annotated fall onset when relevant, and model/configuration used for
-analysis. The previous deleted videos are not restored by this restructuring.
-Example labels are independent of model predictions; cached results must be
-identified as cached. See the [Person 4 brief](../docs/team/person_4.md).
+Private recordings and new datasets belong in ignored data/ or artifacts/.
+Do not stage unsafe falls. The report uses confidence/signal traces rather than
+redistributing frames from unverified recordings.

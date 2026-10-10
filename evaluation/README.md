@@ -1,24 +1,25 @@
 # Evaluation and benchmarks
 
-Owner: Person 4. This folder provides repeatable evaluation and benchmark harnesses,
-robustness evaluation protocols, and metric calculation suites in accordance with
-[docs/interfaces/metrics.md](../docs/interfaces/metrics.md).
+Development owns evaluation code and scientific evidence. The owner identifies
+[Kaggle Fall Video Dataset](https://www.kaggle.com/datasets/payutch/fall-video-dataset)
+as the training source. Read [dataset evidence](../docs/project/dataset.md),
+[metrics](../docs/interfaces/metrics.md) and the [report](../docs/project/ICare_Report.docx).
 
-Read the [Person 4 brief](../docs/team/person_4.md) and
-[evaluation status](../docs/project/evaluation_status.md).
+Run verified media with python -m evaluation.run_benchmarks --catalog
+examples/manifest.json --output artifacts/evaluation/benchmark_report.json.
+Existing clips are unverified; default execution reports missing approved media.
+For local diagnostics only, add --allow-unverified. Pending labels do not produce
+accuracy or event-delay claims. Failures are counted separately from predictions.
 
-## Running Benchmarks
+The harness records throughput, model calls and resource use; false-alarm rate
+uses verified normal exposure. The report documents actual isolated API executions,
+not a newly reproduced held-out dataset result. Historical reproduction still
+requires original split/prediction files. Robustness perturbation code exists,
+but broad video robustness/generalization experiments remain pending data.
 
-Run the complete evaluation suite against approved clip manifests:
-
-```powershell
-python -m evaluation.run_benchmarks --manifest examples/manifest.json --output artifacts/evaluation/benchmark_report.json
-```
-
-## Key Components
-
-- `evaluation/benchmark_harness.py`: Core benchmark harness measuring throughput (FPS), alert latency percentiles (median/p95), false alarm rates per camera-hour, resource utilization (CPU/RAM), and classification metrics (precision, recall, F1, balanced accuracy).
-- `evaluation/robustness_eval.py`: Evaluates pipeline performance under synthetic keypoint dropout, noise, frame cropping, and hard negatives.
-- `evaluation/run_benchmarks.py`: Executable runner producing versioned JSON metric reports into `artifacts/evaluation/`.
-- `examples/manifest.json`: Approved demonstration asset annotations with fall onset timestamps and provenance metadata.
-
+The Gaussian audit tool compares the actual deployed heatmap function's stencil
+at identical transformed coordinates against the reviewed MMAction2 v1.2.0
+GeneratePoseTarget kernel. Supply the upstream source and SHA256 explicitly:
+python -m tools.audit_heatmap_kernel --upstream-source artifacts/mmaction_pose_transforms.py
+--expected-sha256 0fcaeb0a3a199216b2ea8a14a4f50e092ddffcaa346712724d678546d3c6c344
+This is a diagnostic kernel comparison, not full preprocessing or model parity.

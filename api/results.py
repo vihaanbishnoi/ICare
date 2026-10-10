@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import csv
+import io
 import json
 from pathlib import Path
 from statistics import mean, median
 from typing import Any, Mapping
+
+from api.schemas import Result
 
 
 PREFIX = "/api/v1"
@@ -48,7 +51,7 @@ def build_result(
     for name, value in dict(summary.get("metrics") or {}).items():
         if value is None or isinstance(value, (int, float)):
             metrics.setdefault(name, value)
-    return {
+    document = {
         "job_id": job_id,
         "duration_seconds": float(summary["duration_seconds"]),
         "frame_width": int(summary["frame_width"]),
@@ -65,18 +68,29 @@ def build_result(
             "csv": job_url(job_id, "/reports/csv"),
         },
     }
+    # Reject non-finite summary/metric values before a job is marked complete.
+    return Result.model_validate(document).model_dump()
 
 
-def write_outputs(job_dir: Path, result: dict[str, Any]) -> None:
+class ResultTooLarge(ValueError):
+    pass
+
+
+def write_outputs(job_dir: Path, result: dict[str, Any], max_bytes: int = 5 * 1024 * 1024) -> None:
     """Write result.json, report.json and report.csv inside the job folder."""
 
-    (job_dir / "result.json").write_text(json.dumps(result), encoding="utf-8")
-    (job_dir / "report.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    result_json = json.dumps(result, allow_nan=False)
+    report_json = json.dumps(result, indent=2, allow_nan=False)
     incident_at = {i["detected_at_seconds"]: i["incident_id"] for i in result["incidents"]}
-    with (job_dir / "report.csv").open("w", newline="", encoding="utf-8") as file:
+    with io.StringIO(newline='') as file:
         writer = csv.DictWriter(file, fieldnames=CSV_FIELDS, extrasaction="ignore")
         writer.writeheader()
         for prediction in result["predictions"]:
             row = dict(prediction)
             row["incident_id"] = incident_at.get(prediction["timestamp_seconds"], "")
             writer.writerow(row)
+        report_csv = file.getvalue()
+    if sum(len(value.encode('utf-8')) for value in (result_json, report_json, report_csv)) > max_bytes:
+        raise ResultTooLarge('Result documents exceed the reserved storage budget.')
+    for filename, content in [('result.json', result_json), ('report.json', report_json), ('report.csv', report_csv)]:
+        (job_dir / filename).write_text(content, encoding='utf-8', newline='')

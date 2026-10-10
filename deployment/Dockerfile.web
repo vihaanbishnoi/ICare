@@ -1,0 +1,10 @@
+FROM node:24-bookworm-slim AS build
+WORKDIR /web
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY frontend ./
+RUN npm test && npm run build
+FROM nginx:stable-alpine
+COPY deployment/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /web/dist /usr/share/nginx/html
+EXPOSE 80

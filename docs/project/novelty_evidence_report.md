@@ -1,8 +1,10 @@
-# ICare Person 4: Novelty and Evidence Report
+# ICare Development: Novelty and Evidence Report
 
 ## Overview
 
-This report documents the architectural innovations, original contributions, reused components, and supporting evidence for the ICare Pose-Based Fall Detection system.
+This report distinguishes reused models and implemented engineering from proposed
+research contributions. Custom code alone does not establish research novelty or
+superiority. Those claims require prior-work comparison and matched experiments.
 
 ---
 
@@ -15,13 +17,13 @@ This report documents the architectural innovations, original contributions, reu
 | **PoseC3D (SlowOnly-R50)** | Fine-Tuned Backbone | 3D CNN temporal classifier fine-tuned on fall dataset | `models/posec3d_fall.onnx` |
 | **Incident De-duplication Protocol** | **Engineering Component** | Dual-threshold state machine ($0.50$ alert trigger / $0.35$ re-arm after 3 clear windows) | `api/incidents.py` |
 | **Evaluation Benchmark Harness** | **Engineering Component** | Automated throughput, latency percentile ($p_{50}/p_{95}$), and false alarm rate benchmark suite | `evaluation/benchmark_harness.py` |
-| **PoseC3D Preprocessing Bridge** | **Novel Custom Component** | Real-time temporal interpolation (48 positions over 4.0s) & $17\times 48\times 64\times 64$ Gaussian target generation | `icare_app/posec3d_bridge.py` |
-| **Motion Urgency V1 Signal** | **Novel Custom Component** | Normalized hip descent rate, torso rotation, joint displacement, and aspect ratio change | `icare_app/pose_signals.py` |
-| **Pose Reliability V1 Signal** | **Novel Custom Component** | Multi-factor confidence score combining joint visibility, torso completeness, and temporal stability | `icare_app/pose_signals.py` |
+| **PoseC3D Preprocessing Bridge** | **Custom engineering; numerical parity pending** | Temporal interpolation and Gaussian heatmap generation | `icare_app/posec3d_bridge.py` |
+| **Motion Urgency V1 Signal** | **Custom instrumentation; benefit unmeasured** | Hip descent, torso rotation, displacement, aspect-ratio change | `icare_app/pose_signals.py` |
+| **Pose Reliability V1 Signal** | **Custom instrumentation; benefit unmeasured** | Joint visibility, torso completeness, temporal stability | `icare_app/pose_signals.py` |
 
 ---
 
-## 2. Detailed Technical Novelty Claims
+## 2. Implemented mechanisms and proposed research
 
 ### 2.1 Motion Urgency V1 Signal
 The motion urgency signal computes dynamic movement indicators to complement PoseC3D predictions:
@@ -30,18 +32,26 @@ The motion urgency signal computes dynamic movement indicators to complement Pos
 - **Bounding Box Aspect Ratio Shift**: Rapid transition from tall (standing) to wide (horizontal/fallen) aspect ratio.
 
 ### 2.2 Pose Reliability V1 Signal
-To prevent invalid inference when keypoint detection fails (e.g. extreme occlusion or partial frame containment), the reliability score combines:
+The reliability score describes pose quality; it does not currently gate or
+schedule inference. It combines:
 - **Mean Keypoint Confidence**: Average detection score across 17 COCO joints.
 - **Torso Keypoint Visibility**: Presence of shoulders and hips.
 - **Temporal Stability**: Keypoint displacement variance over rolling frame windows.
 
 ### 2.3 Lightweight ONNX Resampling Bridge
-Instead of executing full MMAction2 video loading pipelines at inference time, `icare_app/posec3d_bridge.py` implements a zero-dependency NumPy pipeline that interpolates timestamped keypoints directly into $64\times 64$ spatial heatmaps over 48 temporal slices.
+`icare_app/posec3d_bridge.py` uses NumPy without an MMAction2 inference runtime
+to resample timestamped keypoints into 48 temporal positions and 64x64 heatmaps.
+Numerical comparison with the original validation preprocessing remains pending.
 
 ---
 
 ## 3. Evidence Traceability Matrix
 
-- **Accuracy & F1 Evidence**: Verified against held-out group-aware split ($N=1011$, Precision 97.09%, Recall 94.75%, F1 95.90%).
-- **Parity Audit Evidence**: Verified in `docs/project/mmaction2_parity_review.md`.
-- **Benchmark Code Evidence**: Verified in `evaluation/benchmark_harness.py` and `tests/test_evaluation_harness.py`.
+- **Historical metrics**: Reported group-aware split (N=1011, precision 97.09%,
+  recall 94.75%, F1 95.90%); not newly reproduced or subject-independent.
+- **Preprocessing review**: [Code comparison](mmaction2_parity_review.md), with
+  numerical parity explicitly unverified.
+- **Benchmark implementation**: evaluation/benchmark_harness.py and synthetic
+  tests exist; this is not evidence of real performance gains.
+- **Integration evidence**: [Two-clip local smoke check](implementation_status.md);
+  no controlled superiority, generalization or adaptive-scheduling result.

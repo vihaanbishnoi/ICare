@@ -1,6 +1,6 @@
 # Research assets
 
-Owner: Person 4, individual unassigned, working with Person 1 on one optional
+Owner: Development, individual unassigned, working with Development on one optional
 optimization after the ordinary product baseline is measured.
 
 This folder is for future approved training notebooks, evaluation notebooks,

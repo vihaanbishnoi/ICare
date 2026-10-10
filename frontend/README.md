@@ -12,7 +12,7 @@ React + TypeScript + Vite implementation of the ICare fall-detection demo UI.
 
 ```bash
 # From this directory:
-npm install
+npm ci
 npm run dev        # http://localhost:5173  (proxies /api/v1 → http://127.0.0.1:8000)
 ```
 
@@ -24,7 +24,9 @@ uvicorn api.main:create_app --factory --port 8000
 ```
 
 The Vite dev proxy forwards all `/api/v1/*` requests to the backend so the
-`SameSite=strict` session cookie is never rejected.
+browser sees one origin. It preserves Host for API origin validation; override
+the target with `ICARE_API_TARGET` when using another backend port.
+Use Node 24 or newer for the built-in TypeScript regression test runner.
 
 ## Same-origin requirement
 
@@ -32,7 +34,7 @@ All API calls use **relative URLs only** (`/api/v1/…`). Do NOT introduce absol
 URLs — the backend session cookie is `SameSite=strict; HttpOnly` and will be
 blocked if the request origin doesn't match.
 
-In production, Person 5 configures the reverse proxy to serve both the built
+In production, Deployment owner (Person 5) configures the reverse proxy to serve both the built
 frontend and the FastAPI backend from the same HTTPS origin.
 
 ## Source layout
@@ -74,14 +76,22 @@ src/
 - **Meta description** — removed inaccurate "Watch real skeleton tracking"
 - **Same-origin URLs** — all API calls are relative; Vite proxy for dev
 
-## Fixture note
+## Playback and failure handling
 
-The old `frontend/index.html` animated stick-figure + `Math.random()` fixtures
-remain in `frontend/` (not this directory) for reference. They must be removed
-before public release. This React app makes real API calls and shows real data.
+This app displays real API records. Confidence uses the latest prediction at or
+before playback time, clears stale records, and never reads future predictions.
+Pose gaps clear the overlay. Recorded incidents do not imply a fabricated
+four-second recovery. Hero and demo tabs share selection state. Polling surfaces
+permanent errors and stops after three consecutive transient failures; status
+retry resumes the same job. Synthetic adapters remain test-only.
+
+Local browser checks completed a fall example and normal-video upload. DOM journey tests cover completion, seeking, retry, cancellation and upload errors.
+Broader mobile/accessibility/browser checks remain further validation.
 
 ## Build
 
 ```bash
-npm run build    # produces dist/ — served by Person 5 from /
+npm run build    # produces dist/ — served by Deployment owner (Person 5) from /
+npm test         # four playback tests and eight DOM journey regressions
+npm run lint     # clean
 ```

@@ -17,7 +17,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     const msg = errBody?.error?.message ?? `HTTP ${res.status}`;
     throw Object.assign(new Error(msg), { status: res.status, code: errBody?.error?.code });
   }
-  return res.json() as Promise<T>;
+  return res.status === 204 ? undefined as T : res.json() as Promise<T>;
 }
 
 /** GET /api/v1/examples */
@@ -47,21 +47,18 @@ export async function startUploadJob(file: File): Promise<Job> {
 }
 
 /** GET /api/v1/jobs/{job_id} */
-export async function pollJob(jobId: string): Promise<Job> {
-  return apiFetch<Job>(`/jobs/${jobId}`);
+export async function pollJob(jobId: string, signal?: AbortSignal): Promise<Job> {
+  return apiFetch<Job>(`/jobs/${jobId}`, { signal });
 }
 
 /** GET /api/v1/jobs/{job_id}/results  —  409 if not complete */
-export async function fetchResults(jobId: string): Promise<Result> {
-  return apiFetch<Result>(`/jobs/${jobId}/results`);
+export async function fetchResults(jobId: string, signal?: AbortSignal): Promise<Result> {
+  return apiFetch<Result>(`/jobs/${jobId}/results`, { signal });
 }
 
 /** DELETE /api/v1/jobs/{job_id} */
 export async function deleteJob(jobId: string): Promise<void> {
-  await fetch(`${BASE}/jobs/${jobId}`, {
-    method: 'DELETE',
-    credentials: 'same-origin',
-  });
+  await apiFetch<void>(`/jobs/${jobId}`, { method: 'DELETE' });
 }
 
 /** GET /api/v1/ready */

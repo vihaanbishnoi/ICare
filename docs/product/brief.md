@@ -45,5 +45,5 @@ Reported group-aware baseline: precision 97.09%, recall 94.75%, fall F1 95.90%,
 balanced accuracy 96.20%, average precision 99.61%. These are not live-service
 or subject-independent results. ICare remains a research prototype.
 
-The [five numbered parts](../team/ownership.md) supply the full implementation,
-evaluation, report, integration, and deployment. No named person is assigned.
+[Development](../development.md) owns implementation, evaluation and the academic
+report. Person 5 owns hosting and live release.

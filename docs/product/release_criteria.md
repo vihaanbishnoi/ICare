@@ -1,6 +1,6 @@
 # First public release acceptance
 
-Person 5 coordinates; each part supplies evidence for its own work. Checkboxes
+Deployment owner (Person 5) coordinates; each part supplies evidence for its own work. Checkboxes
 are completed by demonstrated deployed behavior, not by the existence of a folder.
 
 ## Visitor experience
@@ -37,7 +37,7 @@ are completed by demonstrated deployed behavior, not by the existence of a folde
 - [ ] CI covers critical inference/API/product integration.
 - [ ] Restart/cleanup/cost limits/rollback are documented and tested.
 - [ ] README links the actual live URL, examples, architecture, results, and limits.
-- [ ] Person 5 integrates the report and demo recording with team evidence.
+- [ ] Deployment owner (Person 5) integrates the report and demo recording with team evidence.
 
 Webcam, extra behaviours, and publishable novelty are later work. They do not
 replace a missing essential item.

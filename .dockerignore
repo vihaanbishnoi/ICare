@@ -1,0 +1,16 @@
+.git
+.venv
+artifacts
+output
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+.env
+.env.*
+*.pth
+*.pt
+*.ckpt
+uploads
+test_videos
+data

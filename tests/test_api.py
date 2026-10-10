@@ -92,6 +92,8 @@ class ApiTestCase(unittest.TestCase):
         self.settings = Settings(
             data_dir=self.tmp / "data", examples_manifest=examples / "catalog.json",
             max_upload_bytes=200_000, job_timeout_seconds=5,
+            max_active_jobs_per_visitor=20, max_jobs_per_visitor_window=100,
+            max_jobs_per_ip_window=100, allow_unverified_examples=True,
         )
         self.engine = self.engine_factory()
         self.app = create_app(self.settings, engine=self.engine)
@@ -121,6 +123,20 @@ class ApiTestCase(unittest.TestCase):
 
 
 class HealthAndExamplesTests(ApiTestCase):
+    def test_catalogue_media_url_resolves_and_supports_ranges(self) -> None:
+        url = self.client.get("/api/v1/examples").json()["examples"][0]["video_url"]
+        response = self.client.get(url, headers={"Range": "bytes=0-7"})
+        self.assertEqual(response.status_code, 206)
+        self.assertEqual(len(response.content), 8)
+
+    def test_catalogue_cannot_expose_files_outside_its_directory(self) -> None:
+        (self.tmp / "private.mp4").write_bytes(mp4_bytes(5))
+        catalog = json.loads(self.settings.examples_manifest.read_text())
+        catalog["examples"][0]["file"] = "../private.mp4"
+        self.settings.examples_manifest.write_text(json.dumps(catalog))
+        self.assertEqual(self.client.get("/api/v1/examples").json()["examples"], [])
+        self.assertEqual(self.client.get("/api/v1/examples/fall-1/media").status_code, 404)
+
     def test_health_ready_and_catalogue(self) -> None:
         self.assertEqual(self.client.get("/api/v1/health").json(), {"status": "ok"})
         ready = self.client.get("/api/v1/ready")
@@ -227,8 +243,48 @@ class JobFlowTests(ApiTestCase):
         job = self.wait(self.client, self.upload(self.client, mp4_bytes(5)).json()["job_id"])
         self.assertEqual(job["error"]["code"], "timeout")
 
+    def test_unresponsive_engine_timeout_is_reported_without_waiting_for_engine(self) -> None:
+        self.app.state.runner.timeout_seconds = 0.1
+        self.engine.gate = threading.Event()
+        original = self.engine.analyze_video
+        def unresponsive(path, **callbacks):
+            self.engine.gate.wait(3)  # Test adapter ignores cancellation until released.
+            return original(path, **callbacks)
+        self.engine.analyze_video = unresponsive
+        job_id = self.upload(self.client, mp4_bytes(5)).json()["job_id"]
+        job = self.wait(self.client, job_id)
+        self.assertEqual(job["error"]["code"], "timeout")
+        self.assertEqual(self.client.get("/api/v1/ready").status_code, 503)
+        self.assertEqual(self.upload(self.client, mp4_bytes(5)).status_code, 503)
+        self.engine.gate.set()
+
 
 class IsolationAndAccessTests(ApiTestCase):
+    def test_expired_results_cannot_be_downloaded(self) -> None:
+        from datetime import datetime, timedelta, timezone
+        response = self.client.post("/api/v1/jobs/example", json={"example_id": "fall-1"})
+        job_id = response.json()["job_id"]
+        self.wait(self.client, job_id)
+        old = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+        self.app.state.store.update_job(job_id, created_at_utc=old)
+        self.assertEqual(self.client.get(f"/api/v1/jobs/{job_id}/reports/json").status_code, 404)
+        self.assertFalse((self.settings.data_dir / "jobs" / job_id).exists())
+        self.assertIsNone(self.app.state.store.get_job(job_id))
+
+    def test_private_results_disable_browser_and_proxy_caching(self) -> None:
+        response = self.client.post("/api/v1/jobs/example", json={"example_id": "fall-1"})
+        job_id = response.json()["job_id"]
+        self.wait(self.client, job_id)
+        report = self.client.get(f"/api/v1/jobs/{job_id}/reports/json")
+        self.assertEqual(report.headers["cache-control"], "private, no-store")
+
+    def test_browser_origin_matches_preserved_development_proxy_host(self) -> None:
+        response = self.client.post(
+            "/api/v1/jobs/example", json={"example_id": "fall-1"},
+            headers={"Origin": "http://localhost:5173", "Host": "localhost:5173"},
+        )
+        self.assertEqual(response.status_code, 202)
+
     def test_two_visitors_same_filename_are_isolated(self) -> None:
         visitor_b = self.other_visitor()
         a = self.upload(self.client, mp4_bytes(5, padding=10), "clip.mp4").json()
@@ -276,6 +332,63 @@ class IsolationAndAccessTests(ApiTestCase):
 
 
 class UploadLimitTests(ApiTestCase):
+    def test_nonfinite_prediction_cannot_complete_with_unreadable_results(self) -> None:
+        original = self.engine.analyze_video
+        def malformed(path, **callbacks):
+            callbacks["on_prediction"]({"timestamp_seconds": float("nan"), "fall_probability": 0.8})
+            return original(path, **callbacks)
+        self.engine.analyze_video = malformed
+        job_id = self.upload(self.client, mp4_bytes(5)).json()["job_id"]
+        job = self.wait(self.client, job_id)
+        self.assertEqual(job["state"], "failed")
+        self.assertEqual(job["error"]["code"], "invalid_engine_output")
+
+    def test_nonfinite_summary_metric_fails_before_outputs_are_written(self) -> None:
+        original = self.engine.analyze_video
+        def malformed(path, **callbacks):
+            summary = original(path, **callbacks)
+            summary["metrics"] = {"process_cpu_percent_mean": float("inf")}
+            return summary
+        self.engine.analyze_video = malformed
+        job_id = self.upload(self.client, mp4_bytes(5)).json()["job_id"]
+        job = self.wait(self.client, job_id)
+        self.assertEqual(job["state"], "failed")
+        self.assertEqual(job["error"]["code"], "invalid_engine_output")
+        self.assertFalse((self.settings.data_dir / "jobs" / job_id / "result.json").exists())
+
+    def test_truncated_movie_header_returns_400_and_cleans_upload(self) -> None:
+        ftyp = struct.pack(">I4s4sI4s", 20, b"ftyp", b"isom", 0, b"isom")
+        mvhd = struct.pack(">I4s", 12, b"mvhd") + b"\0" * 4
+        moov = struct.pack(">I4s", 8 + len(mvhd), b"moov") + mvhd
+        response = self.upload(self.client, ftyp + moov)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"]["code"], "invalid_video")
+        self.assertEqual(list((self.settings.data_dir / "jobs").iterdir()), [])
+
+    def test_real_pose_scores_are_not_treated_as_probabilities(self) -> None:
+        from api.schemas import Pose
+        record = pose(2.0)
+        record["keypoints"][0][2] = 1.4
+        self.assertEqual(Pose.model_validate(record).keypoints[0][2], 1.4)
+        record["keypoints"][0][2] = -0.1
+        self.assertEqual(Pose.model_validate(record).keypoints[0][2], -0.1)
+        record["keypoints"][0][0] = float("nan")
+        with self.assertRaises(ValueError):
+            Pose.model_validate(record)
+
+    def test_malformed_keypoint_rows_fail_the_job(self) -> None:
+        original = self.engine.analyze_video
+        def malformed(path, **callbacks):
+            record = pose(2.0)
+            record["keypoints"] = [[1.0, 2.0] for _ in range(17)]
+            callbacks["on_pose"](record)
+            return original(path, **callbacks)
+        self.engine.analyze_video = malformed
+        job_id = self.upload(self.client, mp4_bytes(5)).json()["job_id"]
+        job = self.wait(self.client, job_id)
+        self.assertEqual(job["state"], "failed")
+        self.assertEqual(job["error"]["code"], "invalid_engine_output")
+
     def test_rejects_non_mp4_content_even_with_mp4_name(self) -> None:
         response = self.upload(self.client, b"not a video at all", "fake.mp4")
         self.assertEqual(response.status_code, 400)

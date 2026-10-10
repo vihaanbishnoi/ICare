@@ -1,61 +1,46 @@
 # ICare repository instructions
 
-## Goal and current state
+## Responsibility
+
+Development (the project owner and coding assistant) owns engine, API, frontend,
+evaluation, tests and supporting documentation. Person 5 owns deployment:
+hosting, HTTPS, operational budgets, container verification, recovery and live
+release. The former five-person role briefs/handoffs are retired. Do not recreate
+them or require cross-person approval to complete development work.
+
+## Current product
 
 Build a public no-login fall/normal-example and short-upload research demo.
-The five parts are in docs/team/ownership.md; usernames are intentionally unassigned.
-Person 5 coordinates integration and deployment; the project owner is not a sixth
-developer. AI tools assist development; do not add LLM calls to fall inference.
+CPU ONNX inference, FastAPI and React/Vite exist. Read docs/development.md and
+docs/project/implementation_status.md for evidence and remaining inputs.
+Keep the retired Gradio UI/app.py removed; do not use legacy global sessions as
+product orchestration. AI assists coding; do not add LLM calls to fall inference.
 
-The model/library baseline exists. The API/frontend are not implemented. The old
-Gradio UI and app.py were removed intentionally. Do not recreate them, import
-icare_app.ui, or turn legacy global sessions into the product architecture.
-Retain trained ONNX weights and useful validated model operations.
+## Implementation
 
-## Starting a coding task
+Use docs/project/stack.md and v1 contracts in docs/interfaces/. Update affected
+consumers together when a shared contract changes. Preserve useful computations
+and trained weights; model/class/preprocessing/threshold changes require measured
+evidence. Keep unrelated uncommitted work intact and avoid competing implementations.
 
-Read your numbered brief and relevant interface document. Use the default stack
-in docs/project/stack.md and v1 contracts in docs/interfaces/. Do not independently
-change framework, routes, field names, units, or model/class/preprocessing order.
-Coordinate a necessary shared change through Person 5 and affected parts.
+## Verification
 
-For setup/documentation tasks a chosen numbered part is not required. Follow the
-current human task scope; a structure-only task does not implement product features.
+Run python -m tools.check_repository and python -m unittest discover -s tests -v.
+Run frontend npm test, npm run build and npm run lint when affected. Add meaningful
+failure/lifecycle/security/interaction tests. Record checks actually run.
+requirements-test.txt is a separate test-only environment; the product uses root
+requirements.txt plus api/requirements.txt and the frontend lockfile.
 
-## Ownership and scope
+Historical metrics are group-aware, not verified subject-independent. Real model
+outputs are required for inference evidence. Unknown data/latency/resource metrics
+remain unknown; fixtures are labelled and never presented as published inference.
+Do not invent video permissions, dataset identity, parity, accuracy or novelty.
 
-- Person 1: pose/ONNX/heatmap engine, model configuration, lifecycle tests.
-- Person 2: api/, isolated jobs, incident/report adaptation, API tests.
-- Person 3: frontend/, browser experience and interaction tests.
-- Person 4: evaluation/, research/, examples/, evaluation tools and evidence.
-- Person 5: deployment/, configs/, CI/dependencies, integration and release docs.
+## Hygiene
 
-Implement one backlog deliverable per PR. Leave other people's work intact.
-Do not build all five parts in one task, overwrite unrelated uncommitted changes,
-or generate parallel competing implementations. Use the role's starter prompt
-under docs/team/prompts/ and record decisions and handoff evidence in the PR.
-
-## Evidence and verification
-
-Existing commands from repository root:
-
-- python -m tools.check_repository
-- python -m unittest discover -s tests -v
-
-requirements-test.txt is for a separate test-only environment. requirements.txt
-contains the retained model/evaluation dependencies, not a complete product stack.
-Add meaningful component tests as features are implemented; run affected checks.
-Do not claim real-model/browser/deployment checks that were not run.
-
-Historical metrics are group-aware, not confirmed subject-independent. Unknown
-latency, missing data, and unused GPU metrics remain unknown/not applicable.
-Use actual ONNX outputs for published confidence/incident evidence. Development
-fixtures must be labelled and excluded from the published inference path.
-
-## Repository hygiene
-
-No credentials, raw private data, local model caches, or generated reports in Git.
-Ignored artifacts/ may contain a local legacy backup; it is not product source.
-Do not restore retired UI from it. No mandatory webcam, added behaviours, training
-rewrite, Kubernetes, or distributed queue for the first example/upload release.
-Report changed files, test outcomes, limitations, and the next integration dependency.
+Keep credentials, raw private data, caches and generated reports out of Git.
+Ignored artifacts/ may hold local legacy backups; do not restore them into source.
+No mandatory webcam, added behaviours, training rewrite, Kubernetes or distributed
+queue for the first example/upload release. Report changes, tests, limitations and
+any deployment dependency. The completed academic report is an explicitly requested versioned deliverable;
+its retained skeleton stays unchanged. Keep raw diagnostic outputs in artifacts/.

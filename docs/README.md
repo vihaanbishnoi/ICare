@@ -1,31 +1,21 @@
-# Documentation start here
+# Documentation
 
-Start with the [single clean handoff](team/handoff.md), choose your numbered part,
-and use its starter prompt. This index is a reference; it is not a required
-reading queue for every AI session.
+Start with [implementation status](project/implementation_status.md) and
+[development](development.md). Development owns engine/API/frontend/evaluation;
+Person 5 owns deployment. There are no separate numbered developer briefs.
 
-| Read this | Purpose |
+| Reference | Purpose |
 | --- | --- |
-| [Product brief](product/brief.md) | What the recruiter-ready demo must deliver |
-| [Proposal coverage](product/proposal_coverage.md) | Every requested outcome mapped to parts and evidence |
-| [Public release criteria](product/release_criteria.md) | Evidence needed to publish |
-| [Team handoff](team/handoff.md) | Understand the baseline and complete five-person plan |
-| [AI workflow](team/ai_workflow.md) | How each teammate supplies context to ChatGPT/Codex or Claude |
-| [Copyable starter prompts](team/prompts/README.md) | One scoped AI coding prompt for each numbered part |
-| [Default stack](project/stack.md) | Compatible framework/storage/deployment choices |
-| [Choose a numbered part](team/ownership.md) | Person 1 through 5, no named assignments |
-| [Unassigned roster](team/roster.md) | All five usernames without role mapping |
-| [Starter backlog](team/backlog.md) | Tasks, dependencies, and integration milestones |
-| [Contribution guide](../CONTRIBUTING.md) | Branches, reviews, checks, and coordination |
-| [Component decisions](project/component_decisions.md) | What to keep, replace, or defer |
-| [Interface agreements](interfaces/README.md) | Runtime, API, and measurement boundaries |
-| [Architecture](project/architecture.md) | Current prototype versus target product |
-| [Dataset](project/dataset.md) | Access and evidence requirements |
-| [Evaluation status](project/evaluation_status.md) | Limits of historical metrics |
-| [Academic report](project/report_outline.md) | Report sections and team integration |
-| [Security review](security/repository_review.md) | Existing audit and remaining work |
-| [Deployment](../deployment/README.md) | Person 5's release boundary and runbook |
+| [Product brief](product/brief.md) | Demo scope |
+| [Release criteria](product/release_criteria.md) | Public release verification |
+| [Stack](project/stack.md) | Runtime choices |
+| [Interfaces](interfaces/README.md) | Engine/API/measurement contracts |
+| [Architecture](project/architecture.md) | Active components |
+| [Dataset](project/dataset.md) | Source and access evidence |
+| [Evaluation status](project/evaluation_status.md) | Results and missing inputs |
+| [Security review](security/repository_review.md) | Credential/privacy checks |
+| [Deployment](../deployment/README.md) | Packaging and host work |
+| [Runbook](../deployment/runbook.md) | Startup/recovery/release |
 
-Keep product requirements in product/, interface decisions in interfaces/, team
-process in team/, project evidence in project/, and audits in security/.
-Generated outputs stay in ignored artifacts/ until approved for publication.
+Generated outputs stay in ignored artifacts/. The academic report skeleton is
+preserved and is not updated by this development task.

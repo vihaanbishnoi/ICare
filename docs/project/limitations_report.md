@@ -1,8 +1,8 @@
-# ICare Person 4: Limitations and Data Boundaries Report
+# ICare Development: Limitations and Data Boundaries Report
 
 ## Overview
 
-This report documents the evaluation limitations, dataset boundaries, hardware constraints, and domain gaps identified during Person 4's audit of the ICare system.
+This report documents the evaluation limitations, dataset boundaries, hardware constraints, and domain gaps identified during Development's audit of the ICare system.
 
 ---
 

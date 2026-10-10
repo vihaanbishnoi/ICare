@@ -1,0 +1,39 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: deployment/Dockerfile.api
+    environment:
+      ICARE_API_DATA_DIR: /app/artifacts/api
+      ICARE_POSEC3D_MODEL: /app/models/posec3d_fall.onnx
+      ICARE_POSE_DEVICE: cpu
+      ICARE_COOKIE_SECURE: "${ICARE_COOKIE_SECURE:-0}"
+      XDG_CACHE_HOME: /app/cache
+    volumes:
+      - api-data:/app/artifacts
+      - model-cache:/app/cache
+    expose:
+      - "8000"
+    restart: unless-stopped
+    cpus: 2
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ready', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      start_period: 180s
+      retries: 12
+  web:
+    build:
+      context: .
+      dockerfile: deployment/Dockerfile.web
+    ports:
+      - "127.0.0.1:7860:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  api-data:
+  model-cache:

@@ -101,7 +101,7 @@ function HeroCanvas() {
 
 // ─── Nav ────────────────────────────────────────────────────────────────────
 
-function Nav({ onTabNav }: { onTabNav: (tab: 'fall' | 'normal' | 'upload') => void }) {
+function Nav() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -155,8 +155,7 @@ function Nav({ onTabNav }: { onTabNav: (tab: 'fall' | 'normal' | 'upload') => vo
 
 type DemoTab = 'fall' | 'normal' | 'upload';
 
-function DemoSection({ initialTab }: { initialTab: DemoTab }) {
-  const [tab, setTab] = useState<DemoTab>(initialTab);
+function DemoSection({ tab, onTabChange }: { tab: DemoTab; onTabChange: (tab: DemoTab) => void }) {
 
   return (
     <section className="demo" id="demo" aria-labelledby="demo-title">
@@ -172,7 +171,7 @@ function DemoSection({ initialTab }: { initialTab: DemoTab }) {
             id="tab-fall" role="tab"
             aria-selected={tab === 'fall'}
             aria-controls="panel-fall"
-            onClick={() => setTab('fall')}
+            onClick={() => onTabChange('fall')}
           >
             <span className="tab__icon" aria-hidden="true">🎬</span>
             Fall Example
@@ -182,7 +181,7 @@ function DemoSection({ initialTab }: { initialTab: DemoTab }) {
             id="tab-normal" role="tab"
             aria-selected={tab === 'normal'}
             aria-controls="panel-normal"
-            onClick={() => setTab('normal')}
+            onClick={() => onTabChange('normal')}
           >
             <span className="tab__icon" aria-hidden="true">🚶</span>
             Normal Activity
@@ -192,7 +191,7 @@ function DemoSection({ initialTab }: { initialTab: DemoTab }) {
             id="tab-upload" role="tab"
             aria-selected={tab === 'upload'}
             aria-controls="panel-upload"
-            onClick={() => setTab('upload')}
+            onClick={() => onTabChange('upload')}
           >
             <span className="tab__icon" aria-hidden="true">↑</span>
             Upload Video
@@ -268,7 +267,7 @@ function HowItWorks() {
             </div>
             <div className="pipeline-step__num" aria-hidden="true">02</div>
             <h3 className="pipeline-step__title">Person Detection</h3>
-            <p className="pipeline-step__desc">YOLOX-tiny detects person; bounding-box reused between detections. Tracks the largest person.</p>
+            <p className="pipeline-step__desc">YOLOX-tiny finds the largest person on every sampled frame in the offline engine.</p>
           </div>
           <div className="pipeline-arrow" aria-hidden="true">→</div>
           <div className="pipeline-step" role="listitem">
@@ -315,7 +314,7 @@ function HowItWorks() {
         </div>
         <div className="pipeline-note" role="note">
           <strong>Incident rule:</strong> P(Fall) ≥ 0.50 triggers an incident. Re-arms after 3 predictions below 0.35.
-          Alert latency is recorded only when an independent ground-truth fall-onset annotation is available.
+          Source-video event delay requires an independent fall-onset annotation. Model inference time is not end-to-end delivery latency.
         </div>
       </div>
     </section>
@@ -339,11 +338,11 @@ function Metrics() {
         <div className="metrics-cards" role="list" aria-label="Model performance metrics">
           {[
             { value: '95.90%', label: 'Fall F1 Score', desc: 'Harmonic mean of precision and recall' },
-            { value: '97.09%', label: 'Fall Precision', desc: 'TN=541, FP=13 on held-out test set' },
+            { value: '97.09%', label: 'Fall Precision', desc: 'TP=433, FP=13 on held-out test set' },
             { value: '94.75%', label: 'Fall Recall', desc: 'FN=24, TP=433 on held-out test set' },
             { value: '96.20%', label: 'Balanced Accuracy', desc: 'Equal weight per class' },
             { value: '99.61%', label: 'Avg Precision (PR-AUC)', desc: 'Area under precision-recall curve' },
-            { value: '6,766', label: 'Training Samples', desc: 'After exact-pose deduplication' },
+            { value: '6,766', label: 'Dataset Samples', desc: 'Train, validation and test after deduplication' },
           ].map(m => (
             <div className="metric-card" role="listitem" key={m.label}>
               <div className="metric-card__glow" aria-hidden="true" />
@@ -534,10 +533,10 @@ export default function App() {
 
   return (
     <>
-      <Nav onTabNav={goToDemo} />
+      <Nav />
       <main>
         <Hero onNav={setDemoTab} />
-        <DemoSection initialTab={demoTab} />
+        <DemoSection tab={demoTab} onTabChange={setDemoTab} />
         <HowItWorks />
         <Metrics />
         <Limitations />

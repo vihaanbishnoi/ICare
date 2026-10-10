@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from evaluation.benchmark_harness import BenchmarkConfig, BenchmarkHarness, ClipAnnotation, MetricResults
 
@@ -32,7 +32,12 @@ def load_annotations_from_catalog(catalog_path: Path) -> Tuple[List[ClipAnnotati
     annotations: List[ClipAnnotation] = []
     for item in items:
         clip_id = item.get("example_id", item.get("id"))
-        filename = Path("examples") / item.get("file", item.get("filename", ""))
+        relative = Path(item.get('file', item.get('filename', '')))
+        # Catalog files are relative to the catalog; manifest filenames may be
+        # repository-root paths. Do not prepend examples twice.
+        filename = (catalog_path.parent / relative).resolve()
+        if 'file' not in item and relative.parts and relative.parts[0] == catalog_path.parent.name:
+            filename = (catalog_path.parent.parent / relative).resolve()
         onset_sec = item.get("annotated_onset_seconds")
         if onset_sec is None:
             onset_sec = item.get("fall_onset_seconds", item.get("fall_onset_sec"))
@@ -43,6 +48,7 @@ def load_annotations_from_catalog(catalog_path: Path) -> Tuple[List[ClipAnnotati
             fall_onset_seconds=onset_sec,
             duration_seconds=item.get("duration_seconds", item.get("duration_sec")),
             provenance_status=item.get("provenance_status", status),
+            label_status=item.get('label_status', 'pending'),
         ))
     return annotations, status
 
@@ -52,6 +58,7 @@ def run_benchmark_suite(
     output_path: Optional[Path] = None,
     model_path: Path = Path("models/posec3d_fall.onnx"),
     device: str = "cpu",
+    allow_unverified: bool = False,
 ) -> Dict[str, Any]:
     """Execute benchmark suite against the real engine if approved media files exist."""
     annotations, status = load_annotations_from_catalog(catalog_path)
@@ -59,7 +66,7 @@ def run_benchmark_suite(
     # Check if video files exist locally
     available_annotations = [a for a in annotations if a.filename.is_file()]
 
-    if not available_annotations or status == "pending_approved_media":
+    if not available_annotations or (status != 'approved' and not allow_unverified):
         report = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "catalog_file": str(catalog_path),
@@ -131,11 +138,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         default=Path("artifacts/evaluation/benchmark_report.json"),
         help="Path where output benchmark report JSON will be written"
     )
+    parser.add_argument('--allow-unverified', action='store_true', help='Local diagnostics only; unverified labels do not produce classification metrics')
 
     args = parser.parse_args(argv)
 
     try:
-        report = run_benchmark_suite(args.catalog, args.output, model_path=args.model)
+        report = run_benchmark_suite(args.catalog, args.output, model_path=args.model, allow_unverified=args.allow_unverified)
         if report.get("baseline_metrics"):
             print(json.dumps(report["baseline_metrics"], indent=2))
         else:

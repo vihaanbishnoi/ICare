@@ -25,7 +25,13 @@ def mp4_duration_seconds(path: Path) -> float:
         if mvhd is None:
             raise InvalidVideo("MP4 has no movie header.")
         file.seek(mvhd[0])
-        version = file.read(4)[0]
+        flags = file.read(4)
+        if len(flags) != 4:
+            raise InvalidVideo("MP4 movie header is truncated.")
+        version = flags[0]
+        required = 32 if version == 1 else 20
+        if version not in (0, 1) or mvhd[1] - mvhd[0] < required:
+            raise InvalidVideo("MP4 movie header is invalid or truncated.")
         if version == 1:
             file.seek(16, 1)
             timescale, duration = struct.unpack(">IQ", file.read(12))
@@ -46,11 +52,14 @@ def _find_box(file, start: int, end: int, kind: bytes) -> tuple[int, int] | None
         size, box_type = struct.unpack(">I4s", file.read(8))
         header = 8
         if size == 1:
-            size = struct.unpack(">Q", file.read(8))[0]
+            extended = file.read(8)
+            if len(extended) != 8:
+                return None
+            size = struct.unpack(">Q", extended)[0]
             header = 16
         elif size == 0:
             size = end - position
-        if size < header:
+        if size < header or position + size > end:
             return None
         if box_type == kind:
             return position + header, position + size

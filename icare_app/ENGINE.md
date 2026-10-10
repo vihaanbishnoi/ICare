@@ -1,14 +1,14 @@
-# Inference engine (Person 1)
+# Inference engine (Development)
 
 `icare_app.engine` is the v1 engine behind [inference contract v1](../docs/interfaces/inference.md).
 It turns one video file into timestamped poses and PoseC3D fall probabilities, with
-no HTTP, browser or GUI code. Person 2's API loads it through `api/engine.py`.
+no HTTP, browser or GUI code. Development's API loads it through `api/engine.py`.
 
 Status: P1A/P1B/P1C implemented and unit-tested; P1D (independence, reset, no
-person, completion) is covered by `tests/test_engine.py`, with Person 4's review
-still to come. **Not yet run:** the real YOLOX/RTMPose models on a real clip (see
-[Known limits](#known-limits-and-unverified-items)). Every number in the tests comes
-from labelled synthetic adapters, never from a claim about accuracy.
+person, completion) is covered by `tests/test_engine.py`, with Development's review
+still to come. Real YOLOX/RTMPose/PoseC3D completed both six-second catalog clips
+through the API on 10 October 2026. See [integration evidence](../docs/project/implementation_status.md).
+Synthetic test numbers remain labelled and do not establish accuracy.
 
 ## Use it
 
@@ -125,7 +125,7 @@ used and must not serve uploaded clips.
 
 - **Detector runs on every sampled frame** (`detection_frequency=1`), unlike the
   live worker's every-third. At 6 samples/s a reused box would be at least 0.33 s
-  stale during fast motion. Person 4: measure the speed/accuracy trade-off.
+  stale during fast motion. Development: measure the speed/accuracy trade-off.
 - **1.0 s gap resets the track.** The live code interpolated across any gap inside
   four seconds. `max_pose_gap_seconds=None` restores that.
 - **`no_person` and `insufficient_temporal_coverage` fail the job** instead of
@@ -137,17 +137,17 @@ used and must not serve uploaded clips.
 
 ## Hand-offs
 
-- **Person 2:** the engine matches `api/engine.py` (`ready`, `model_version`,
+- **Development:** the engine matches `api/engine.py` (`ready`, `model_version`,
   `analyze_video`, `close`). `tests/test_engine.py::ApiIntegrationTests` runs it
-  inside your job runner. `api/README.md` still says `icare_app.engine` does not
-  exist; please update it. Reports/incidents stay yours.
-- **Person 3:** poses and predictions use original-source pixels and source time;
+  inside the job runner. Real API smoke checks also completed. Reports/incidents
+  stay at the API boundary.
+- **Development:** poses and predictions use original-source pixels and source time;
   scale from `frame_width`/`frame_height`. A missing pose means no overlay.
-- **Person 4:** use `tools.run_engine_clip` or the API for real outputs. Please review
+- **Development:** use `tools.run_engine_clip` or the API for real outputs. Please review
   the preprocessing claim (below), the detector/gap decisions, and MMAction2 parity.
   Report processing time separately from source-timeline event delay
   ([metrics](../docs/interfaces/metrics.md)).
-- **Person 5:** runtime deps are in `requirements.txt` (`numpy`, `opencv-*`,
+- **Deployment owner (Person 5):** runtime deps are in `requirements.txt` (`numpy`, `opencv-*`,
   `onnxruntime`, `rtmlib`, `psutil`; resolve the OpenCV duplicate noted in the
   [stack](../docs/project/stack.md)). On first load rtmlib downloads the YOLOX-tiny
   and RTMPose-s ONNX files (URLs in `icare_app/pose.py`) into
@@ -163,13 +163,13 @@ used and must not serve uploaded clips.
 joints (padding 0.25, 64x64, sigma 0.6, confidence-weighted). It is invariant to
 person position and size (tested), which is why poses may be buffered in source
 pixels. Parity with the MMAction2 validation pipeline on real samples has **not**
-been checked; Person 4 owns that comparison.
+been checked; Development owns that comparison.
 
 ## Known limits and unverified items
 
-- Real YOLOX/RTMPose on a real clip has not been run here: no sample video was
-  available and the pose weights are downloaded at first load. Use
-  `tools.run_engine_clip` once a clip exists.
+- Real two-clip inference passed locally; broader controlled evaluation, hard
+  negatives and real no-person/gap/cancellation coverage remain pending. Use
+  `tools.run_engine_clip` for reproducible output with independent labels.
 - Only the largest person is followed; a second person is ignored.
 - Variable-frame-rate videos and rotation metadata follow OpenCV's decoding.
 - Live RTMPose poses may differ from the dataset's pose generator (domain gap).
@@ -194,6 +194,6 @@ been checked; Person 4 owns that comparison.
 
 Do not route uploads through the live frame-dropping worker, recreate `app.py` or
 Gradio, add LLM calls to inference, fabricate or clip probabilities, change class
-order/preprocessing/thresholds without Person 4's validation, or import onnxruntime,
+order/preprocessing/thresholds without Development's validation, or import onnxruntime,
 rtmlib or psutil at module level in `engine.py`/`engine_model.py` (CI's test
 environment does not install them).
