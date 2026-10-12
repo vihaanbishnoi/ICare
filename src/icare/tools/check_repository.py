@@ -9,7 +9,7 @@ import subprocess
 from urllib.parse import unquote, urlsplit
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^\s)]+)(?:\s+\"[^\"]*\")?\)")
 
 
@@ -45,11 +45,13 @@ def main() -> int:
                 link_count += 1
 
     required = [
-        "AGENTS.md", "CLAUDE.md", "README.md",
+        "AGENTS.md", "README.md", "pyproject.toml",
         ".github/workflows/ci.yml", ".github/workflows/security.yml",
         "requirements-test.txt",
         "models/posec3d_fall.onnx", "models/posec3d_runtime.json",
         "compose.yaml", "deployment/Dockerfile.api", "deployment/Dockerfile.web",
+        "src/icare/inference/engine.py", "src/icare/api/main.py",
+        "src/frontend/package-lock.json",
     ]
     for relative in required:
         if not (ROOT / relative).is_file():

@@ -16,7 +16,7 @@ export default defineConfig({
     },
   },
   build: {
-    // Production proxy serves frontend/dist from the same origin as /api/v1.
+    // Production proxy serves src/frontend/dist from the same origin as /api/v1.
     outDir: 'dist',
   },
 })

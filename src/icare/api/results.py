@@ -8,7 +8,7 @@ from pathlib import Path
 from statistics import mean, median
 from typing import Any, Mapping
 
-from api.schemas import Result
+from icare.api.schemas import Result
 
 
 PREFIX = "/api/v1"

@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 import typing
 import numpy as np
-from icare_app.posec3d_bridge import pose_sequence_to_heatmaps
+from icare.inference.posec3d_bridge import pose_sequence_to_heatmaps
 
 SOURCE_URL = 'https://raw.githubusercontent.com/open-mmlab/mmaction2/v1.2.0/mmaction/datasets/transforms/pose_transforms.py'
 

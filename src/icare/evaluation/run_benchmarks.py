@@ -1,10 +1,10 @@
 """Command-line evaluation runner for the ICare inference engine.
 
 Usage:
-    python -m evaluation.run_benchmarks --catalog examples/catalog.json --output artifacts/evaluation/benchmark_report.json
+    python -m icare.evaluation.run_benchmarks --catalog examples/catalog.json --output artifacts/evaluation/benchmark_report.json
 
 Notes:
-    - Runs the real inference engine (icare_app.engine.load_engine).
+    - Runs the real inference engine (icare.inference.engine.load_engine).
     - If media status is pending or video files do not exist locally, it reports
       media status as pending without fabricating measurements.
 """
@@ -17,7 +17,7 @@ import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from evaluation.benchmark_harness import BenchmarkHarness, ClipAnnotation
+from icare.evaluation.benchmark_harness import BenchmarkHarness, ClipAnnotation
 
 
 def load_annotations_from_catalog(catalog_path: Path) -> Tuple[List[ClipAnnotation], str]:
@@ -82,7 +82,7 @@ def run_benchmark_suite(
         return report
 
     # Real engine execution
-    from icare_app.engine import load_engine
+    from icare.inference.engine import load_engine
 
     harness = BenchmarkHarness()
     engine = load_engine({"model_path": model_path, "device": device})
@@ -105,7 +105,7 @@ def run_benchmark_suite(
         "total_catalog_clips": len(annotations),
         "baseline_metrics": metrics.to_dict(),
         "evaluation_notes": [
-            "Baseline metrics measured using real icare_app.engine.",
+            "Baseline metrics measured using real icare.inference.engine.",
             "Reported numbers distinguish group-aware baseline classifier results from deployed service."
         ]
     }

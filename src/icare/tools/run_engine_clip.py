@@ -1,6 +1,6 @@
 """Run the real engine on one clip and print or save what it measured.
 
-    python -m tools.run_engine_clip path/to/clip.mp4 --output artifacts/engine/clip.json
+    python -m icare.tools.run_engine_clip path/to/clip.mp4 --output artifacts/engine/clip.json
 
 Uses the real YOLOX/RTMPose/PoseC3D models (rtmlib downloads and caches the pose
 models on first use). Output goes to ignored artifacts/ by default; it is local
@@ -14,7 +14,7 @@ from pathlib import Path
 import sys
 import threading
 
-from icare_app.engine import EngineError, load_engine
+from icare.inference.engine import EngineError, load_engine
 
 
 def main(argv: list[str] | None = None) -> int:

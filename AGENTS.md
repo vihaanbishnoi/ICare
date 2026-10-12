@@ -7,13 +7,17 @@ execute project code or deploy unless requested.
 Keep changes focused. Preserve trained weights, class order, preprocessing and
 threshold meaning unless measured validation justifies a change. Update API
 schemas and their consumers together. The runtime entry points are
-api.main:create_app and icare_app.engine.load_engine; the README describes setup.
+icare.api.main:create_app and icare.inference.engine.load_engine; the README describes setup.
 
 Use the existing CPU/FastAPI/React stack. Do not restore Gradio, legacy global
 sessions, LLM inference, mandatory webcam workflows or team handoff material.
 Do not recreate academic reports or planning-document collections unless requested.
 
-Run affected tests and python -m tools.check_repository. For frontend changes,
+Treat the fall detector as the existing research baseline. Review literature and
+measured evidence before choosing a new model, adaptive processing or extra events.
+Keep application code under src/, with optional experiments in icare/evaluation.
+
+Run affected tests and python -m icare.tools.check_repository. For frontend changes,
 run npm test, npm run build and npm run lint. Use requirements-test.txt in a
 separate test environment. Distinguish synthetic adapters from real model evidence.
 

@@ -1,7 +1,7 @@
 """Incident boundaries and event de-duplication, independent of model outputs."""
 import unittest
 
-from api.incidents import IncidentTracker
+from icare.api.incidents import IncidentTracker
 
 
 class IncidentTests(unittest.TestCase):

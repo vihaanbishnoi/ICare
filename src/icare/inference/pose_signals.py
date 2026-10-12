@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from icare_app.pose import PoseFrame
+    from icare.inference.pose import PoseFrame
 
 
 TORSO_JOINTS = np.asarray([5, 6, 11, 12], dtype=np.int64)

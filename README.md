@@ -9,6 +9,11 @@ and a temporal action classifier. Review the original video alongside skeleton
 overlays, fall-confidence traces and detected incidents, then export JSON or CSV.
 Inference runs locally on the CPU without an LLM, API key or mandatory webcam.
 
+The current implementation is a recorded-video fall-detection baseline.
+Its model choice is an existing implementation, not a claim of a final or novel
+architecture. Bed-exit detection, wandering and adaptive processing are outside
+the current release; extending the scope requires literature review and evaluation.
+
 ## Features
 
 - MP4 analysis with synchronized video, poses and confidence over source time.
@@ -75,14 +80,15 @@ Use Python 3.11 and Node 24 or newer. In PowerShell:
 
 ```powershell
 py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r api/requirements.txt
-.\.venv\Scripts\python.exe -m uvicorn api.main:create_app --factory --host 127.0.0.1 --port 8000
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install --no-deps -e .
+.\.venv\Scripts\python.exe -m uvicorn icare.api.main:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
 In a second terminal:
 
 ```powershell
-cd frontend
+cd src/frontend
 npm ci
 npm run dev
 ```
@@ -94,17 +100,36 @@ and `/api/v1/ready` reports model availability.
 
 ## Repository layout
 
-| Directory | Purpose |
-| --- | --- |
-| [icare_app/](icare_app/) | Pose extraction, temporal heatmaps and ONNX inference |
-| [api/](api/) | Jobs, ownership, admission, persistence and reports |
-| [frontend/](frontend/) | React interface, playback and interaction tests |
-| [evaluation/](evaluation/) | Runtime measurements and pose perturbation utilities |
-| [models/](models/) | Versioned classifier weights and runtime metadata |
-| [examples/](examples/) | Catalog and diagnostic video inputs |
-| [deployment/](deployment/) | Pinned runtime, containers, proxy and smoke test |
-| [tests/](tests/) | Engine, API, admission, recovery and evaluation regressions |
-| [tools/](tools/) | Clip runner, subject audit and preprocessing diagnostics |
+Application code lives in one source folder. Tests, trained assets and deployment
+configuration are kept outside it so they do not obscure the inference pipeline.
+
+```text
+src/
+  icare/
+    inference/     Video → poses → temporal heatmaps → fall probabilities
+    api/           Browser requests, jobs, incidents and result exports
+    evaluation/    Optional measurements and diagnostic experiments
+    tools/         Single-clip runner and repository checker
+  frontend/        React/Vite application
+tests/             Python regression tests
+models/            ONNX classifier and metadata
+examples/          Diagnostic clips and catalog
+deployment/        Containers and nginx
+```
+
+To follow the baseline, start with [`engine.py`](src/icare/inference/engine.py):
+`load_engine()` prepares the models and `analyze_video()` processes a clip.
+[`pose.py`](src/icare/inference/pose.py) extracts joints,
+[`posec3d_bridge.py`](src/icare/inference/posec3d_bridge.py) builds temporal
+heatmaps, and [`engine_model.py`](src/icare/inference/engine_model.py) loads
+and validates the classifier. These modules run without the browser or API:
+
+```sh
+python -m icare.tools.run_engine_clip examples/fall_example_01.mp4 --output artifacts/clip.json
+```
+
+Run commands from the checkout root after the editable installation. The
+`evaluation/` package is optional and is not imported by the production API.
 
 ## Evaluation
 
@@ -130,11 +155,13 @@ Use a separate environment for `requirements-test.txt`; it contains test-only
 headless OpenCV dependencies. From the root:
 
 ```sh
-python -m tools.check_repository
+python -m pip install -r requirements-test.txt
+python -m pip install --no-deps -e .
+python -m icare.tools.check_repository
 python -m unittest discover -s tests -v
 ```
 
-From `frontend/`:
+From `src/frontend/`:
 
 ```sh
 npm test

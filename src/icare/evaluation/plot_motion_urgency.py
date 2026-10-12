@@ -4,7 +4,7 @@ import argparse
 import csv
 from pathlib import Path
 
-from icare_app.pose_signals import PoseSignalEstimator
+from icare.inference.pose_signals import PoseSignalEstimator
 
 
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".mpeg", ".mpg", ".m4v"}
@@ -135,7 +135,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    from icare_app.pose import RTMPoseExtractor
+    from icare.inference.pose import RTMPoseExtractor
 
     fall_videos = collect_videos(
         args.fall_dir, args.fall_video, args.count_per_class

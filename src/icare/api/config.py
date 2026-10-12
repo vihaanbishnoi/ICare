@@ -7,7 +7,8 @@ import os
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
+# Assets stay at the checkout root for editable installs and the /app container.
+ROOT = Path(__file__).resolve().parents[3]
 
 
 @dataclass(frozen=True)

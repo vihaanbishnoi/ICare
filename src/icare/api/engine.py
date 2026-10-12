@@ -1,6 +1,6 @@
 """Engine boundary injected into the job worker.
 
-The production adapter loads icare_app.engine in an isolated process.
+The production adapter loads icare.inference.engine in an isolated process.
 The API never imports pose/ONNX code directly, and it never substitutes a fake
 engine: when no real engine loads, /ready and job creation return 503.
 """
@@ -24,7 +24,7 @@ class Engine(Protocol):
     """What the API expects from load_engine(config).
 
     analyze_video calls on_pose/on_prediction with records using the field names
-    in api/schemas.py, and returns a summary only after the final
+    in src/icare/api/schemas.py, and returns a summary only after the final
     prediction has been emitted. The summary must include duration_seconds,
     frame_width and frame_height of the original source video.
 
@@ -52,11 +52,6 @@ class Engine(Protocol):
 def load_real_engine() -> Engine | None:
     """Load the production model process; report unavailable on startup failure."""
 
-    try:
-        from icare_app.engine import load_engine  # type: ignore[import-not-found]
-    except ImportError:
-        log.warning("icare_app.engine is not available; API will report not ready")
-        return None
     config = {
         "model_path": os.environ.get(
             "ICARE_POSEC3D_MODEL", "models/posec3d_fall.onnx"
@@ -64,7 +59,7 @@ def load_real_engine() -> Engine | None:
         "device": os.environ.get("ICARE_POSE_DEVICE", "cpu"),
     }
     try:
-        from api.process_engine import ProcessEngine
+        from icare.api.process_engine import ProcessEngine
         return ProcessEngine(config)
     except Exception:  # noqa: BLE001 - readiness must report, not crash startup
         log.exception("Engine failed to load; API will report not ready")

@@ -17,9 +17,9 @@ from typing import Any, Callable, Iterator, Mapping, Protocol
 
 import numpy as np
 
-from icare_app.pose import PoseFrame
-from icare_app.pose_signals import PoseSignalEstimator
-from icare_app.posec3d_bridge import PoseSequenceBuffer
+from icare.inference.pose import PoseFrame
+from icare.inference.pose_signals import PoseSignalEstimator
+from icare.inference.posec3d_bridge import PoseSequenceBuffer
 
 
 log = logging.getLogger(__name__)
@@ -606,7 +606,7 @@ def load_engine(config: Mapping[str, Any] | EngineConfig) -> PoseC3DEngine:
     without network access and without that cache fails here, not mid-job.
     """
 
-    from icare_app import engine_model
+    from icare.inference import engine_model
 
     settings = config if isinstance(config, EngineConfig) else EngineConfig.from_mapping(config)
     if settings.device != "cpu":

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from icare_app.pose import PoseFrame
+from icare.inference.pose import PoseFrame
 
 
 @dataclass(frozen=True)

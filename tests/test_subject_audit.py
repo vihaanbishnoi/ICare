@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from icare_app.subject_audit import audit_subject_split
+from icare.evaluation.subject_audit import audit_subject_split
 
 
 class SubjectAuditTests(unittest.TestCase):

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 import random
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
-from evaluation.benchmark_harness import BenchmarkHarness, ClipAnnotation, EvaluationRecord, MetricResults
+from icare.evaluation.benchmark_harness import BenchmarkHarness, ClipAnnotation, EvaluationRecord, MetricResults
 
 
 HARD_NEGATIVE_ACTIVITIES = [

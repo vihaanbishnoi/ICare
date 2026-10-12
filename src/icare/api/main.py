@@ -1,6 +1,6 @@
 """FastAPI app for /api/v1. Run with:
 
-    uvicorn api.main:create_app --factory
+    uvicorn icare.api.main:create_app --factory
 """
 from __future__ import annotations
 
@@ -24,13 +24,13 @@ from starlette.formparsers import MultiPartException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 
-from api.config import Settings
-from api.engine import Engine, load_real_engine
-from api.results import job_url
-from api.schemas import Example, ExampleJobRequest, ExamplesResponse, Incident, Job
-from api.store import ACTIVE_STATES, Store, utc_now
-from api.video import InvalidVideo, mp4_duration_seconds
-from api.worker import JobRunner
+from icare.api.config import Settings
+from icare.api.engine import Engine, load_real_engine
+from icare.api.results import job_url
+from icare.api.schemas import Example, ExampleJobRequest, ExamplesResponse, Incident, Job
+from icare.api.store import ACTIVE_STATES, Store, utc_now
+from icare.api.video import InvalidVideo, mp4_duration_seconds
+from icare.api.worker import JobRunner
 
 
 log = logging.getLogger(__name__)
@@ -207,12 +207,6 @@ def load_examples(settings: Settings) -> list[dict]:
         document["video_url"] = f"/api/v1/examples/{quote(document['example_id'], safe='')}/media"
         examples.append(document)
     return examples
-
-
-def check_capacity(request: Request) -> None:
-    store: Store = request.app.state.store
-    if store.count_queued() >= request.app.state.settings.max_queued_jobs:
-        raise ApiError(429, "capacity", "The demo is busy. Please try again shortly.")
 
 
 def new_job(request: Request, owner_key: str, source_kind: str,

@@ -6,21 +6,21 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from evaluation.benchmark_harness import (
+from icare.evaluation.benchmark_harness import (
     BenchmarkHarness,
     ClipAnnotation,
     EvaluationRecord,
     MetricResults,
     calculate_percentile,
 )
-from evaluation.robustness_eval import (
+from icare.evaluation.robustness_eval import (
     HARD_NEGATIVE_ACTIVITIES,
     RobustnessEvaluator,
     apply_frame_cropping,
     apply_keypoint_dropout,
     apply_keypoint_noise,
 )
-from evaluation.run_benchmarks import load_annotations_from_catalog, run_benchmark_suite
+from icare.evaluation.run_benchmarks import load_annotations_from_catalog, run_benchmark_suite
 
 
 class TestFixtureEngineAdapter:

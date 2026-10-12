@@ -1,4 +1,4 @@
-"""Model loading and verification for icare_app.engine.
+"""Model loading and verification for icare.inference.engine.
 
 Everything that needs onnxruntime or rtmlib is imported inside a function, so
 importing this module is side-effect free.
@@ -13,7 +13,7 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from icare_app.engine import EngineConfig, ModelRuntimeError, ModelUnavailableError
+from icare.inference.engine import EngineConfig, ModelRuntimeError, ModelUnavailableError
 
 
 EXPECTED_INPUT_NAME = "pose_heatmaps"
@@ -135,7 +135,7 @@ class OnnxTemporalClassifier:
 def load_pose_extractor(config: EngineConfig):
     """YOLOX-tiny + RTMPose-s (COCO-17). rtmlib downloads and caches the weights."""
 
-    from icare_app.pose import RTMPoseExtractor
+    from icare.inference.pose import RTMPoseExtractor
 
     try:
         return RTMPoseExtractor(device=config.device, detection_frequency=config.detection_frequency)

@@ -55,7 +55,7 @@ def _model_process(connection, config, factory):
 
 
 class ProcessEngine:
-    def __init__(self, config, *, startup_timeout=180.0, factory='icare_app.engine:load_engine'):
+    def __init__(self, config, *, startup_timeout=180.0, factory='icare.inference.engine:load_engine'):
         self.config = config
         self.startup_timeout = startup_timeout
         self.factory = factory

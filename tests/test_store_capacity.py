@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from api.store import Store, utc_now
+from icare.api.store import Store, utc_now
 
 
 class CapacityTests(unittest.TestCase):

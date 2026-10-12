@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from icare_app.pose_signals import PoseSignalEstimator
+from icare.inference.pose_signals import PoseSignalEstimator
 
 
 @dataclass(frozen=True)

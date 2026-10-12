@@ -1,6 +1,6 @@
 /**
- * Type definitions mirroring api/schemas.py — do not invent fields.
- * Source of truth: api/schemas.py
+ * Type definitions mirroring src/icare/api/schemas.py — do not invent fields.
+ * Source of truth: src/icare/api/schemas.py
  */
 
 export type JobState = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';

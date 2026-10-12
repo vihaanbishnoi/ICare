@@ -2,7 +2,7 @@
 
 Measures throughput (FPS), alert latency percentiles (median/p95), false alarm rates
 per camera-hour, resource usage (CPU/RAM), and classification metrics in accordance
-with the source-time records emitted by icare_app.engine.
+with the source-time records emitted by icare.inference.engine.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Sequence
 
-from api.incidents import IncidentTracker
+from icare.api.incidents import IncidentTracker
 
 
 @dataclass
@@ -207,7 +207,7 @@ class BenchmarkHarness:
         return results
 
     def run_engine_clip(self, engine: Any, annotation: ClipAnnotation) -> EvaluationRecord:
-        """Run real inference engine on one clip using icare_app.engine interface."""
+        """Run real inference engine on one clip using icare.inference.engine interface."""
         poses: List[Dict[str, Any]] = []
         predictions: List[Dict[str, Any]] = []
         tracker = IncidentTracker()
