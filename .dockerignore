@@ -8,8 +8,6 @@ env
 artifacts
 reports
 output
-research
-docs
 **/node_modules
 **/dist
 **/__pycache__

@@ -64,7 +64,7 @@ export function ExamplePanel({ initialOutcome }: Props) {
           : list[0];
         if (preferred) setSelectedId(preferred.example_id);
         setPhase(list.length ? 'ready' : 'error');
-        if (!list.length) setErrorMsg('No public examples are available yet. You can analyze your own permitted video in Upload Your Video.');
+        if (!list.length) setErrorMsg('Example clips are unavailable. Analyze a permitted MP4 in Upload Your Video.');
       })
       .catch(e => {
         setPhase('error');
@@ -151,7 +151,6 @@ export function ExamplePanel({ initialOutcome }: Props) {
               poses={result.poses}
               predictions={result.predictions}
               incidents={result.incidents}
-              mode="live"
               onTimeChange={setVideoTime}
             />
             <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem' }}>

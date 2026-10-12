@@ -1,4 +1,4 @@
-"""Robustness and perturbation evaluation framework for ICare (Person 4).
+"""Pose perturbations and robustness evaluation utilities.
 
 Evaluates pose pipeline degradation under synthetic noise, missing keypoint joints,
 frame cropping/occlusions, and hard negative activity cases (sitting fast, lying down,

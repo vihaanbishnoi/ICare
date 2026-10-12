@@ -1,4 +1,4 @@
-"""Typed v1 documents from docs/interfaces/api.md (snake_case, seconds)."""
+"""Typed API records using snake_case fields and source-time seconds."""
 from __future__ import annotations
 
 from typing import Literal

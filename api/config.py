@@ -1,4 +1,4 @@
-"""API settings. Defaults are the v1 limits in docs/interfaces/api.md."""
+"""Validated API limits and environment configuration."""
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -1,6 +1,6 @@
 /**
  * Type definitions mirroring api/schemas.py — do not invent fields.
- * Source of truth: docs/interfaces/api.md
+ * Source of truth: api/schemas.py
  */
 
 export type JobState = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';

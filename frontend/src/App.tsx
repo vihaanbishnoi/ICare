@@ -1,12 +1,4 @@
-/**
- * ICare Frontend — App.tsx
- * Full page: Nav, Hero, Demo (tabs), How It Works, Metrics, Limitations, Footer.
- *
- * Text corrections from the brief:
- *  - "12 FPS / stale frames dropped" removed — this described the old live worker.
- *    Offline engine samples at 6 poses per source second.
- *  - Meta description fixed (handled in index.html).
- */
+/** Public video-analysis interface. Results come from the API. */
 import { useEffect, useRef, useState } from 'react';
 import { ExamplePanel } from './components/ExamplePanel';
 import { UploadPanel } from './components/UploadPanel';
@@ -230,7 +222,6 @@ function DemoSection({ tab, onTabChange }: { tab: DemoTab; onTabChange: (tab: De
 }
 
 // ─── How It Works ────────────────────────────────────────────────────────────
-// Fixed: removed "12 FPS / stale frames" — describes old live worker, not offline engine.
 // Offline engine: 6 poses per source second, reproducible by timestamp.
 
 function HowItWorks() {
@@ -252,9 +243,8 @@ function HowItWorks() {
             </div>
             <div className="pipeline-step__num" aria-hidden="true">01</div>
             <h3 className="pipeline-step__title">Frame Sampling</h3>
-            {/* Fixed: old live worker described "12 FPS, stale frames dropped". Offline engine uses timestamp-based sampling. */}
             <p className="pipeline-step__desc">
-              Frames are sampled at ~6 poses per source second, selected by video timestamp for reproducibility.
+              Frames are sampled at a target of 6 per source second, selected by video timestamp for reproducibility.
             </p>
           </div>
           <div className="pipeline-arrow" aria-hidden="true">→</div>
@@ -322,7 +312,7 @@ function HowItWorks() {
 }
 
 // ─── Metrics ─────────────────────────────────────────────────────────────────
-// Numbers from docs/interfaces/metrics.md and approved by Person 4.
+// Historical group-aware classifier results; distinct from current runtime measurements.
 // precision 97.09%, recall 94.75%, F1 95.90% — group-aware classifier test.
 
 function Metrics() {
@@ -389,10 +379,10 @@ function Limitations() {
   const items = [
     { icon: '👤', title: 'Single Person Only', body: 'Tracks only the largest detected person. Multi-person identity tracking is not implemented.' },
     { icon: '📊', title: 'Group-Aware, Not Subject-Independent', body: 'Prevents groups from crossing folds. Subject IDs unavailable — results may not generalise to unseen individuals.' },
-    { icon: '⚡', title: 'CPU Throughput Gap', body: 'Pose inference runs slower than camera FPS on CPU. Measured FPS, RAM, and latency are pending live-service testing.' },
+    { icon: '⚡', title: 'CPU Processing', body: 'Analysis can take longer than playback. Processing times depend on the clip and CPU environment.' },
     { icon: '🔬', title: 'Train/Deploy Domain Gap', body: 'RTMPose at deployment may differ from the pose generator used during training. Gap not yet quantified.' },
     { icon: '🚫', title: 'Not a Medical Device', body: 'ICare is a research prototype. Must not be used as an emergency response or clinical monitoring system.' },
-    { icon: '📋', title: 'Urgency Not Yet Adaptive', body: 'Motion urgency and reliability are instrumented but do not control model scheduling. Thresholds await validation traces.' },
+    { icon: '📋', title: 'Diagnostic Motion Signals', body: 'Motion urgency and pose reliability support inspection; they do not control classifier scheduling.' },
   ];
   return (
     <section className="limitations-section" id="limitations" aria-labelledby="limitations-title">

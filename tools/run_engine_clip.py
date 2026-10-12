@@ -4,7 +4,7 @@
 
 Uses the real YOLOX/RTMPose/PoseC3D models (rtmlib downloads and caches the pose
 models on first use). Output goes to ignored artifacts/ by default; it is local
-evidence for Person 4's benchmarks, not a file to commit.
+execution evidence, not a file to commit.
 """
 from __future__ import annotations
 

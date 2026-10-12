@@ -1,7 +1,6 @@
 """Incident rule, per job.
 
-Same semantics as FallDetectionSession._consume_output in icare_app/inference.py:
-one incident when P(Fall) >= 0.50 while armed, then re-arm only after three
+Record one incident when P(Fall) >= 0.50 while armed, then re-arm only after three
 consecutive predictions below 0.35. A lower probability never means "recovered".
 """
 from __future__ import annotations

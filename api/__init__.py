@@ -1,1 +1,1 @@
-"""ICare FastAPI service (Person 2). See api/README.md."""
+"""ICare video-analysis API."""

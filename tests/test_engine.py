@@ -1,4 +1,4 @@
-"""Engine v1 lifecycle tests (Person 1).
+"""Inference engine lifecycle and completion tests.
 
 ScriptedExtractor and ScriptedClassifier are labelled TEST ADAPTERS. Their output
 is derived from synthetic geometry and is not model output, accuracy evidence or a
@@ -578,7 +578,7 @@ class RealOnnxModelTests(EngineTestCase):
 
 @unittest.skipUnless(importlib.util.find_spec("fastapi"), "fastapi is not installed")
 class ApiIntegrationTests(EngineTestCase):
-    """The engine behind Person 2's job runner: schema validation, results, errors."""
+    """Engine-to-API integration: schema validation, results and errors."""
 
     def mp4(self, name: str, seconds: float, value: int) -> bytes:
         from api.video import InvalidVideo, mp4_duration_seconds

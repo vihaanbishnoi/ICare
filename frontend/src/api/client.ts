@@ -60,13 +60,3 @@ export async function fetchResults(jobId: string, signal?: AbortSignal): Promise
 export async function deleteJob(jobId: string): Promise<void> {
   await apiFetch<void>(`/jobs/${jobId}`, { method: 'DELETE' });
 }
-
-/** GET /api/v1/ready */
-export async function checkReady(): Promise<boolean> {
-  try {
-    const res = await fetch(`${BASE}/ready`, { credentials: 'same-origin' });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}

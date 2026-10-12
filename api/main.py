@@ -51,7 +51,7 @@ def not_found() -> ApiError:
 
 
 def create_app(settings: Settings | None = None, engine: Any = _NOT_LOADED) -> FastAPI:
-    """Build the app. Tests inject ``engine``; production loads Person 1's engine."""
+    """Build the app. Tests inject ``engine``; production loads the isolated model process."""
 
     settings = settings or Settings.from_env()
 
@@ -184,7 +184,7 @@ def job_document(job: dict) -> dict:
 
 
 def load_examples(settings: Settings) -> list[dict]:
-    """Person 4's approved catalogue; an empty list when none exists yet."""
+    """Load verified catalog clips, with an explicit local diagnostic override."""
 
     try:
         raw = json.loads(settings.examples_manifest.read_text(encoding="utf-8"))

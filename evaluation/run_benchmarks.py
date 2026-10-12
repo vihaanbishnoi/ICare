@@ -1,4 +1,4 @@
-"""Executable CLI runner for Person 4 ICare benchmark evaluation suite.
+"""Command-line evaluation runner for the ICare inference engine.
 
 Usage:
     python -m evaluation.run_benchmarks --catalog examples/catalog.json --output artifacts/evaluation/benchmark_report.json
@@ -6,7 +6,7 @@ Usage:
 Notes:
     - Runs the real inference engine (icare_app.engine.load_engine).
     - If media status is pending or video files do not exist locally, it reports
-      media status as pending and does NOT fabricate metrics per docs/interfaces/metrics.md.
+      media status as pending without fabricating measurements.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from evaluation.benchmark_harness import BenchmarkConfig, BenchmarkHarness, ClipAnnotation, MetricResults
+from evaluation.benchmark_harness import BenchmarkHarness, ClipAnnotation
 
 
 def load_annotations_from_catalog(catalog_path: Path) -> Tuple[List[ClipAnnotation], str]:
@@ -84,8 +84,7 @@ def run_benchmark_suite(
     # Real engine execution
     from icare_app.engine import load_engine
 
-    config = BenchmarkConfig(model_path=model_path, device=device)
-    harness = BenchmarkHarness(config)
+    harness = BenchmarkHarness()
     engine = load_engine({"model_path": model_path, "device": device})
 
     records = []
@@ -119,7 +118,7 @@ def run_benchmark_suite(
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Run ICare Person 4 Evaluation Benchmark Suite")
+    parser = argparse.ArgumentParser(description="Run the ICare evaluation suite")
     parser.add_argument(
         "--catalog",
         type=Path,

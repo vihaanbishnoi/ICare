@@ -1,29 +1,19 @@
-"""Evaluation benchmark harness for ICare inference engine (Person 4).
+"""Evaluation benchmark harness for the ICare inference engine.
 
 Measures throughput (FPS), alert latency percentiles (median/p95), false alarm rates
 per camera-hour, resource usage (CPU/RAM), and classification metrics in accordance
-with docs/interfaces/metrics.md and icare_app.engine contracts.
+with the source-time records emitted by icare_app.engine.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
-import json
+from dataclasses import asdict, dataclass
 import math
 from pathlib import Path
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
 from api.incidents import IncidentTracker
-
-
-@dataclass
-class BenchmarkConfig:
-    """Configuration options for benchmark evaluation runs."""
-    sample_fps: float = 6.0
-    model_path: Path = Path("models/posec3d_fall.onnx")
-    device: str = "cpu"
-    repeat_runs: int = 1
 
 
 @dataclass
@@ -60,7 +50,7 @@ class EvaluationRecord:
 
 @dataclass
 class MetricResults:
-    """Aggregated evaluation metrics according to docs/interfaces/metrics.md.
+    """Aggregated classification and execution measurements.
 
     Unmeasured values stay None (never zero or fabricated numbers).
     """
@@ -112,14 +102,11 @@ def calculate_percentile(data: Sequence[float], percentile: float) -> Optional[f
 class BenchmarkHarness:
     """Benchmark evaluation harness for analyzing inference engine outputs."""
 
-    def __init__(self, config: Optional[BenchmarkConfig] = None) -> None:
-        self.config = config or BenchmarkConfig()
-
     @staticmethod
     def compute_metrics(records: Sequence[EvaluationRecord], annotations: Sequence[ClipAnnotation]) -> MetricResults:
         """Compute aggregate metrics from evaluation records.
         
-        Unmeasured fields remain None per docs/interfaces/metrics.md.
+        Unmeasured fields remain None.
         """
         results = MetricResults()
         if not records:

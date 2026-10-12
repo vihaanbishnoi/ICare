@@ -1,4 +1,4 @@
-"""Unit tests for Person 4 evaluation benchmark harness, IncidentTracker integration, and robustness protocols."""
+"""Evaluation measurements, incident integration and pose perturbation tests."""
 from __future__ import annotations
 
 import json
@@ -7,7 +7,6 @@ import tempfile
 import unittest
 
 from evaluation.benchmark_harness import (
-    BenchmarkConfig,
     BenchmarkHarness,
     ClipAnnotation,
     EvaluationRecord,

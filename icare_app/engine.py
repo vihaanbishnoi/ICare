@@ -2,7 +2,7 @@
 
 Importing this module loads no model and touches no network: onnxruntime, rtmlib
 and psutil are imported only inside ``load_engine`` and the helpers it calls.
-See docs/interfaces/inference.md and icare_app/ENGINE.md.
+The API adapter implements the same callbacks without importing HTTP code.
 """
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ OUTPUT_PRECISION = 4  # decimals kept for pixel coordinates in emitted records
 
 @dataclass(frozen=True)
 class EngineConfig:
-    """Engine settings. Defaults follow docs/interfaces/inference.md."""
+    """Validated settings for source sampling and temporal inference."""
 
     model_path: Path
     metadata_path: Path | None = None

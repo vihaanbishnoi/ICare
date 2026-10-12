@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from threading import Condition, Lock, Thread
+from threading import Lock
 from time import perf_counter
 
 import cv2
@@ -16,15 +16,6 @@ POSE_URL = (
     "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/"
     "rtmpose-s_simcc-body7_pt-body7_420e-256x192-acd4a1ef_20230504.zip"
 )
-
-# COCO-17 joint connections (zero based).
-COCO_EDGES = (
-    (0, 1), (0, 2), (1, 3), (2, 4),
-    (5, 6), (5, 7), (7, 9), (6, 8), (8, 10),
-    (5, 11), (6, 12), (11, 12),
-    (11, 13), (13, 15), (12, 14), (14, 16),
-)
-
 
 @dataclass(frozen=True)
 class PoseFrame:
@@ -44,7 +35,6 @@ class RTMPoseExtractor:
         self,
         device: str = "cpu",
         detection_threshold: float = 0.35,
-        keypoint_threshold: float = 0.30,
         detection_frequency: int = 3,
     ) -> None:
         try:
@@ -56,7 +46,6 @@ class RTMPoseExtractor:
             ) from exc
 
         self.detection_threshold = detection_threshold
-        self.keypoint_threshold = keypoint_threshold
         self.detection_frequency = max(1, detection_frequency)
         self.lock = Lock()
         self.frame_index = 0
@@ -145,197 +134,3 @@ class RTMPoseExtractor:
             frame_height=frame_rgb.shape[0],
             inference_ms=(perf_counter() - started) * 1000,
         )
-
-    def draw(self, frame_rgb: np.ndarray, pose: PoseFrame | None) -> np.ndarray:
-        if pose is None:
-            return frame_rgb
-        output = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
-        scale_x = frame_rgb.shape[1] / pose.frame_width
-        scale_y = frame_rgb.shape[0] / pose.frame_height
-        points = pose.keypoints.copy()
-        points[:, 0] *= scale_x
-        points[:, 1] *= scale_y
-        bbox = pose.bbox * np.array([scale_x, scale_y, scale_x, scale_y])
-        x1, y1, x2, y2 = np.rint(bbox).astype(int)
-        cv2.rectangle(output, (x1, y1), (x2, y2), (72, 210, 255), 2)
-
-        for first, second in COCO_EDGES:
-            if (
-                points[first, 2] >= self.keypoint_threshold
-                and points[second, 2] >= self.keypoint_threshold
-            ):
-                p1 = tuple(np.rint(points[first, :2]).astype(int))
-                p2 = tuple(np.rint(points[second, :2]).astype(int))
-                cv2.line(output, p1, p2, (80, 220, 110), 2, cv2.LINE_AA)
-        for x, y, confidence in points:
-            if confidence >= self.keypoint_threshold:
-                cv2.circle(output, (round(float(x)), round(float(y))), 3, (245, 90, 80), -1)
-
-        cv2.putText(
-            output,
-            f"RTMPose | {pose.inference_ms:.0f} ms | people: {pose.detected_people}",
-            (max(8, x1), max(24, y1 - 8)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            (72, 210, 255),
-            2,
-            cv2.LINE_AA,
-        )
-        return cv2.cvtColor(output, cv2.COLOR_BGR2RGB)
-
-
-class PosePreviewBackend:
-    """Pose visualization now; PoseC3D probability is connected after training."""
-
-    available = False
-    name = "RTMPose ready; PoseC3D pending"
-
-    def __init__(self, device: str = "cpu", inference_width: int = 640) -> None:
-        from icare_app.posec3d_bridge import PoseSequenceBuffer
-        from icare_app.pose_signals import PoseSignalEstimator
-
-        self.extractor = RTMPoseExtractor(device=device)
-        self.inference_width = inference_width
-        self.sequence_buffer = PoseSequenceBuffer()
-        self.signal_estimator = PoseSignalEstimator()
-        self.latest_pose: PoseFrame | None = None
-        self.latest_signals = None
-        self.latest_error: str | None = None
-        self._pose_frames_processed = 0
-        self._pose_frames_successful = 0
-        self._pose_inference_ms_total = 0.0
-        self._condition = Condition()
-        self._pending: tuple[np.ndarray, float, int] | None = None
-        self._generation = 0
-        self._worker = Thread(target=self._worker_loop, daemon=True)
-        self._worker.start()
-
-    def reset(self) -> None:
-        with self._condition:
-            self._generation += 1
-            self._pending = None
-            self.latest_pose = None
-            self.latest_signals = None
-            self.latest_error = None
-            self._pose_frames_processed = 0
-            self._pose_frames_successful = 0
-            self._pose_inference_ms_total = 0.0
-            self.sequence_buffer.clear()
-            self.signal_estimator.reset()
-            self.extractor.reset()
-
-    def process_frame(self, frame_rgb: np.ndarray, timestamp_seconds: float):
-        height, width = frame_rgb.shape[:2]
-        if width > self.inference_width:
-            scale = self.inference_width / width
-            inference_frame = cv2.resize(
-                frame_rgb,
-                (self.inference_width, max(1, round(height * scale))),
-                interpolation=cv2.INTER_AREA,
-            )
-        else:
-            inference_frame = frame_rgb.copy()
-        with self._condition:
-            # Overwrite instead of enqueueing: stale frames are deliberately dropped.
-            self._pending = (
-                inference_frame,
-                float(timestamp_seconds),
-                self._generation,
-            )
-            self._condition.notify()
-        return None
-
-    def annotate_frame(self, frame_rgb: np.ndarray) -> np.ndarray:
-        with self._condition:
-            pose = self.latest_pose
-            pose_count = self.sequence_buffer.pose_count
-            coverage = self.sequence_buffer.coverage_seconds
-            error = self.latest_error
-            signals = self.latest_signals
-        output = self.extractor.draw(frame_rgb, pose)
-        message = (
-            f"Pose buffer: {pose_count}/6 | {coverage:.1f}/2.0 s"
-            if error is None
-            else f"Inference error: {error[:70]}"
-        )
-        cv2.putText(
-            output,
-            message,
-            (16, max(124, output.shape[0] - 18)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            (255, 255, 255),
-            2,
-            cv2.LINE_AA,
-        )
-        if signals is not None:
-            cv2.putText(
-                output,
-                f"Urgency {signals.urgency:.2f} | Reliability {signals.reliability:.2f}",
-                (16, max(148, output.shape[0] - 42)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.55,
-                (255, 255, 255),
-                2,
-                cv2.LINE_AA,
-            )
-        return output
-
-    def runtime_snapshot(self) -> dict:
-        with self._condition:
-            processed = self._pose_frames_processed
-            successful = self._pose_frames_successful
-            latest = self.latest_signals
-            return {
-                "pose_worker_frames": processed,
-                "successful_pose_frames": successful,
-                "mean_pose_inference_ms": (
-                    round(self._pose_inference_ms_total / successful, 6)
-                    if successful
-                    else None
-                ),
-                "latest_urgency": (
-                    round(float(latest.urgency), 6) if latest is not None else None
-                ),
-                "latest_reliability": (
-                    round(float(latest.reliability), 6)
-                    if latest is not None
-                    else None
-                ),
-            }
-
-    def on_pose_ready(self, pose: PoseFrame) -> None:
-        """Extension point for the PoseC3D backend."""
-        del pose
-
-    def _worker_loop(self) -> None:
-        while True:
-            with self._condition:
-                self._condition.wait_for(lambda: self._pending is not None)
-                frame_rgb, timestamp_seconds, generation = self._pending
-                self._pending = None
-            try:
-                pose = self.extractor.extract(frame_rgb, timestamp_seconds)
-            except Exception as exc:
-                with self._condition:
-                    if generation == self._generation:
-                        self.latest_error = f"{type(exc).__name__}: {exc}"
-                continue
-            signals = self.signal_estimator.update(pose) if pose is not None else None
-            with self._condition:
-                if generation == self._generation:
-                    self._pose_frames_processed += 1
-                    self.latest_error = None
-                    self.latest_pose = pose
-                    self.latest_signals = signals
-                    if pose is not None:
-                        self._pose_frames_successful += 1
-                        self._pose_inference_ms_total += float(pose.inference_ms)
-                        self.sequence_buffer.append(pose)
-            if pose is not None and generation == self._generation:
-                try:
-                    self.on_pose_ready(pose)
-                except Exception as exc:
-                    with self._condition:
-                        if generation == self._generation:
-                            self.latest_error = f"{type(exc).__name__}: {exc}"

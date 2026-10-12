@@ -45,12 +45,11 @@ def main() -> int:
                 link_count += 1
 
     required = [
-        "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md", "docs/development.md",
-        "docs/project/stack.md",
+        "AGENTS.md", "CLAUDE.md", "README.md",
         ".github/workflows/ci.yml", ".github/workflows/security.yml",
         "requirements-test.txt",
         "models/posec3d_fall.onnx", "models/posec3d_runtime.json",
-        "deployment/README.md", "deployment/runbook.md",
+        "compose.yaml", "deployment/Dockerfile.api", "deployment/Dockerfile.web",
     ]
     for relative in required:
         if not (ROOT / relative).is_file():

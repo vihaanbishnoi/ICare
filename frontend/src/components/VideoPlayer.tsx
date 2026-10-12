@@ -26,12 +26,10 @@ interface Props {
   poses: Pose[];
   predictions: Prediction[];
   incidents: Incident[];
-  /** 'fixture' shows no pose overlay — used only while backend clips are pending */
-  mode?: 'live' | 'fixture';
   onTimeChange?: (seconds: number) => void;
 }
 
-export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predictions, incidents, mode = 'live', onTimeChange }: Props) {
+export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predictions, incidents, onTimeChange }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number | null>(null);
@@ -48,15 +46,6 @@ export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predicti
       const dw = canvas.width;
       const dh = canvas.height;
       ctx.clearRect(0, 0, dw, dh);
-
-      if (mode === 'fixture') {
-        // Draw fixture label
-        ctx.fillStyle = 'rgba(251,191,36,0.85)';
-        ctx.font = '500 11px "JetBrains Mono", monospace';
-        ctx.fillText('⚙ DEVELOPMENT FIXTURE — labelled mock data', 8, 20);
-        rafRef.current = requestAnimationFrame(drawOverlay);
-        return;
-      }
 
       const t = video.currentTime;
       const scaleX = dw / frameWidth;
@@ -169,7 +158,7 @@ export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predicti
       video.removeEventListener('loadedmetadata', sync);
       observer.disconnect();
     };
-  }, [mediaUrl, frameWidth, frameHeight, poses, predictions, incidents, mode]);
+  }, [mediaUrl, frameWidth, frameHeight, poses, predictions, incidents]);
 
   return (
     <div className="video-wrapper" style={{ position: 'relative' }}>

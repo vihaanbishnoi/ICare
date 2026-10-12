@@ -190,7 +190,6 @@ export function UploadPanel() {
               poses={result.poses}
               predictions={result.predictions}
               incidents={result.incidents}
-              mode="live"
               onTimeChange={setVideoTime}
             />
             <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem' }}>

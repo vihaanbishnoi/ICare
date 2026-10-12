@@ -1,6 +1,6 @@
 """Engine boundary injected into the job worker.
 
-The real engine is Person 1's icare_app.engine (docs/interfaces/inference.md).
+The production adapter loads icare_app.engine in an isolated process.
 The API never imports pose/ONNX code directly, and it never substitutes a fake
 engine: when no real engine loads, /ready and job creation return 503.
 """
@@ -24,7 +24,7 @@ class Engine(Protocol):
     """What the API expects from load_engine(config).
 
     analyze_video calls on_pose/on_prediction with records using the field names
-    in docs/interfaces/inference.md, and returns a summary only after the final
+    in api/schemas.py, and returns a summary only after the final
     prediction has been emitted. The summary must include duration_seconds,
     frame_width and frame_height of the original source video.
 
@@ -50,7 +50,7 @@ class Engine(Protocol):
 
 
 def load_real_engine() -> Engine | None:
-    """Load Person 1's engine if it exists; return None instead of faking it."""
+    """Load the production model process; report unavailable on startup failure."""
 
     try:
         from icare_app.engine import load_engine  # type: ignore[import-not-found]
