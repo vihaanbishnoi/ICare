@@ -1,4 +1,4 @@
-"""Engine v1 lifecycle tests (Person 1).
+"""Inference engine lifecycle and completion tests.
 
 ScriptedExtractor and ScriptedClassifier are labelled TEST ADAPTERS. Their output
 is derived from synthetic geometry and is not model output, accuracy evidence or a
@@ -20,8 +20,8 @@ import unittest
 import cv2
 import numpy as np
 
-from icare_app import engine as engine_module
-from icare_app.engine import (
+from icare.inference import engine as engine_module
+from icare.inference.engine import (
     AnalysisCancelled,
     EngineClosedError,
     EngineConfig,
@@ -33,8 +33,8 @@ from icare_app.engine import (
     PoseC3DEngine,
     load_engine,
 )
-from icare_app.pose import PoseFrame, RTMPoseExtractor
-from icare_app.posec3d_bridge import pose_sequence_to_heatmaps
+from icare.inference.pose import PoseFrame, RTMPoseExtractor
+from icare.inference.posec3d_bridge import pose_sequence_to_heatmaps
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -491,7 +491,7 @@ class ConfigAndLoadingTests(EngineTestCase):
         import sys
 
         code = (
-            "import sys, icare_app.engine, icare_app.engine_model;"
+            "import sys, icare.inference.engine, icare.inference.engine_model;"
             "bad = [m for m in ('onnxruntime', 'rtmlib', 'psutil') if m in sys.modules];"
             "sys.exit(1 if bad else 0)"
         )
@@ -540,7 +540,7 @@ class RealOnnxModelTests(EngineTestCase):
     """Real PoseC3D weights. Poses stay synthetic, so values are not evidence."""
 
     def load_classifier(self):
-        from icare_app.engine_model import OnnxTemporalClassifier, load_metadata
+        from icare.inference.engine_model import OnnxTemporalClassifier, load_metadata
 
         config = EngineConfig(model_path=ROOT / "models" / "posec3d_fall.onnx")
         return OnnxTemporalClassifier.load(config.model_path, load_metadata(config))
@@ -578,10 +578,10 @@ class RealOnnxModelTests(EngineTestCase):
 
 @unittest.skipUnless(importlib.util.find_spec("fastapi"), "fastapi is not installed")
 class ApiIntegrationTests(EngineTestCase):
-    """The engine behind Person 2's job runner: schema validation, results, errors."""
+    """Engine-to-API integration: schema validation, results and errors."""
 
     def mp4(self, name: str, seconds: float, value: int) -> bytes:
-        from api.video import InvalidVideo, mp4_duration_seconds
+        from icare.api.video import InvalidVideo, mp4_duration_seconds
 
         path = self.tmp / name
         writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), 30, (320, 240))
@@ -601,8 +601,8 @@ class ApiIntegrationTests(EngineTestCase):
 
         from fastapi.testclient import TestClient
 
-        from api.config import Settings
-        from api.main import create_app
+        from icare.api.config import Settings
+        from icare.api.main import create_app
 
         settings = Settings(
             data_dir=self.tmp / "data", examples_manifest=self.tmp / "none.json",

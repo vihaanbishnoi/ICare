@@ -1,12 +1,11 @@
 """Regression cases for failed jobs and unverified evidence boundaries."""
-from dataclasses import replace
 from pathlib import Path
 import json
 import tempfile
 import unittest
 
-from evaluation.benchmark_harness import BenchmarkHarness, ClipAnnotation, EvaluationRecord
-from evaluation.run_benchmarks import load_annotations_from_catalog
+from icare.evaluation.benchmark_harness import BenchmarkHarness, ClipAnnotation, EvaluationRecord
+from icare.evaluation.run_benchmarks import load_annotations_from_catalog
 
 
 def record(name, label, error=None, incidents=0):

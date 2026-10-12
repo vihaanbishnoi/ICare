@@ -16,19 +16,20 @@ RUN pip install -r /tmp/deps/requirements-runtime.txt \
  && pip install --no-deps -r /tmp/deps/rtmlib.txt \
  && rm -rf /tmp/deps
 
-COPY icare_app ./icare_app
-COPY api ./api
+COPY pyproject.toml ./
+COPY src/icare ./src/icare
+RUN pip install --no-deps -e .
 COPY models ./models
 COPY examples ./examples
 
 # 1 (default): download the pose weights and load the full engine once at build
 # time, so the container starts ready without network access and a broken model
 # fails the build instead of the first visitor. 0: skip (CI); /ready then needs
-# the host to reach the model URLs in icare_app/pose.py at startup.
+# the host to reach the model URLs in src/icare/inference/pose.py at startup.
 ARG PRELOAD_MODELS=1
 RUN mkdir -p "$TORCH_HOME" \
  && if [ "$PRELOAD_MODELS" = "1" ]; then \
-      python -c "from icare_app.engine import load_engine; load_engine({'model_path': '$ICARE_POSEC3D_MODEL', 'device': 'cpu'}).close()"; \
+      python -c "from icare.inference.engine import load_engine; load_engine({'model_path': '$ICARE_POSEC3D_MODEL', 'device': 'cpu'}).close()"; \
     fi
 
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin icare \
@@ -38,4 +39,4 @@ USER icare
 EXPOSE 8000
 # The API is reachable only from the web (nginx) container, which overwrites
 # X-Forwarded-For with the real peer address; see deployment/nginx.conf.
-CMD ["python", "-m", "uvicorn", "api.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]
+CMD ["python", "-m", "uvicorn", "icare.api.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]

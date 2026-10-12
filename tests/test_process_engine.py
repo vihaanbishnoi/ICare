@@ -4,7 +4,7 @@ import threading
 import time
 import unittest
 
-from api.process_engine import ProcessEngine, ProcessEngineError
+from icare.api.process_engine import ProcessEngine, ProcessEngineError
 
 
 class ProcessEngineTests(unittest.TestCase):

@@ -16,8 +16,8 @@ import unittest
 
 from fastapi.testclient import TestClient
 
-from api.config import Settings
-from api.main import create_app
+from icare.api.config import Settings
+from icare.api.main import create_app
 
 
 def mp4_bytes(duration_seconds: float, padding: int = 0) -> bytes:
@@ -366,7 +366,7 @@ class UploadLimitTests(ApiTestCase):
         self.assertEqual(list((self.settings.data_dir / "jobs").iterdir()), [])
 
     def test_real_pose_scores_are_not_treated_as_probabilities(self) -> None:
-        from api.schemas import Pose
+        from icare.api.schemas import Pose
         record = pose(2.0)
         record["keypoints"][0][2] = 1.4
         self.assertEqual(Pose.model_validate(record).keypoints[0][2], 1.4)

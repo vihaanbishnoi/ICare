@@ -1,0 +1,191 @@
+/**
+ * VideoPlayer — real <video> with a <canvas> overlay for pose keypoints and bounding box.
+ * Draws COCO-17 keypoints and bbox_xyxy scaled from frame_width/frame_height to
+ * displayed video dimensions. No overlay is drawn when a frame has no matching pose.
+ */
+import { useEffect, useRef } from 'react';
+import type { Incident, Pose, Prediction } from '../types';
+import { hasRecordedIncident, poseAtTime, predictionAtTime } from '../lib/playback';
+
+// COCO-17 skeleton connections (pairs of keypoint indices)
+const SKELETON: [number, number][] = [
+  [0, 1], [0, 2], [1, 3], [2, 4],           // head
+  [5, 6],                                     // shoulders
+  [5, 7], [7, 9],                             // left arm
+  [6, 8], [8, 10],                            // right arm
+  [5, 11], [6, 12],                           // torso
+  [11, 12],                                   // hips
+  [11, 13], [13, 15],                         // left leg
+  [12, 14], [14, 16],                         // right leg
+];
+
+interface Props {
+  mediaUrl: string;
+  frameWidth: number;
+  frameHeight: number;
+  poses: Pose[];
+  predictions: Prediction[];
+  incidents: Incident[];
+  onTimeChange?: (seconds: number) => void;
+}
+
+export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predictions, incidents, onTimeChange }: Props) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    function drawOverlay() {
+      if (!video || !canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const dw = canvas.width;
+      const dh = canvas.height;
+      ctx.clearRect(0, 0, dw, dh);
+
+      const t = video.currentTime;
+      const scaleX = dw / frameWidth;
+      const scaleY = dh / frameHeight;
+      const pose = poseAtTime(poses, t);
+      const pred = predictionAtTime(predictions, t);
+      const falling = hasRecordedIncident(incidents, t);
+
+      if (pose) {
+        // Bounding box
+        const [x1, y1, x2, y2] = pose.bbox_xyxy.map((v, i) => i % 2 === 0 ? v * scaleX : v * scaleY);
+        const bboxColor = falling ? 'rgba(248,113,113,0.85)' : 'rgba(34,211,238,0.6)';
+        ctx.strokeStyle = bboxColor;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+        ctx.setLineDash([]);
+
+        // "person" label
+        ctx.fillStyle = bboxColor;
+        ctx.font = '500 10px "JetBrains Mono", monospace';
+        ctx.fillText('person', x1, Math.max(y1 - 4, 12));
+
+        // Skeleton
+        const kp = pose.keypoints;
+        ctx.lineCap = 'round';
+        const skeletonColor = falling ? 'hsl(4,85%,63%)' : 'hsl(213,85%,68%)';
+        ctx.strokeStyle = skeletonColor;
+        ctx.lineWidth = 2;
+        ctx.shadowColor = skeletonColor;
+        ctx.shadowBlur = 6;
+        SKELETON.forEach(([a, b]) => {
+          if (kp[a][2] > 0.3 && kp[b][2] > 0.3) {
+            ctx.beginPath();
+            ctx.moveTo(kp[a][0] * scaleX, kp[a][1] * scaleY);
+            ctx.lineTo(kp[b][0] * scaleX, kp[b][1] * scaleY);
+            ctx.stroke();
+          }
+        });
+
+        // Keypoints
+        ctx.shadowBlur = 0;
+        kp.forEach(([x, y, c]) => {
+          if (c > 0.3) {
+            ctx.fillStyle = falling ? '#f87171' : '#34d399';
+            ctx.beginPath();
+            ctx.arc(x * scaleX, y * scaleY, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        });
+      }
+
+      // P(Fall) confidence bar (bottom-right)
+      if (pred !== null) {
+        const p = pred.fall_probability;
+        const bX = dw - 140, bY = dh - 40, bW = 120, bH = 10;
+        ctx.fillStyle = 'rgba(7,12,22,0.8)';
+        ctx.beginPath();
+        ctx.roundRect(bX - 8, bY - 24, bW + 16, bH + 32, 6);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(139,148,158,0.6)';
+        ctx.font = '500 10px "JetBrains Mono", monospace';
+        ctx.fillText('P(Fall)', bX, bY - 8);
+        ctx.textAlign = 'right';
+        ctx.fillText(p.toFixed(2), bX + bW, bY - 8);
+        ctx.textAlign = 'left';
+
+        ctx.fillStyle = 'rgba(33,38,45,0.9)';
+        ctx.beginPath();
+        ctx.roundRect(bX, bY, bW, bH, 4);
+        ctx.fill();
+        const barColor = p >= 0.5 ? '#f85149' : p > 0.3 ? '#d29922' : '#58a6ff';
+        ctx.fillStyle = barColor;
+        ctx.beginPath();
+        ctx.roundRect(bX, bY, bW * p, bH, 4);
+        ctx.fill();
+
+        // Threshold tick
+        ctx.strokeStyle = 'rgba(139,148,158,0.4)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(bX + bW * 0.5, bY - 2);
+        ctx.lineTo(bX + bW * 0.5, bY + bH + 2);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(139,148,158,0.4)';
+        ctx.font = '400 8px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('0.5', bX + bW * 0.5, bY + bH + 12);
+        ctx.textAlign = 'left';
+      }
+
+      rafRef.current = requestAnimationFrame(drawOverlay);
+    }
+
+    const sync = () => {
+      if (canvas && video) {
+        canvas.width = video.clientWidth || 640;
+        canvas.height = video.clientHeight || 360;
+      }
+    };
+
+    video.addEventListener('loadedmetadata', sync);
+    const observer = new ResizeObserver(sync);
+    observer.observe(video);
+    sync();
+    rafRef.current = requestAnimationFrame(drawOverlay);
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      video.removeEventListener('loadedmetadata', sync);
+      observer.disconnect();
+    };
+  }, [mediaUrl, frameWidth, frameHeight, poses, predictions, incidents]);
+
+  return (
+    <div className="video-wrapper" style={{ position: 'relative' }}>
+      <video
+        ref={videoRef}
+        className="video-player"
+        src={mediaUrl}
+        controls
+        playsInline
+        onTimeUpdate={event => onTimeChange?.(event.currentTarget.currentTime)}
+        onSeeked={event => onTimeChange?.(event.currentTarget.currentTime)}
+        onLoadedMetadata={event => onTimeChange?.(event.currentTarget.currentTime)}
+        style={{ width: '100%', display: 'block', borderRadius: '8px' }}
+      />
+      <canvas
+        ref={canvasRef}
+        className="video-canvas-overlay"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+          borderRadius: '8px',
+        }}
+      />
+    </div>
+  );
+}
