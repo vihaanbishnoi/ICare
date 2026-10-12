@@ -1,5 +1,5 @@
-# Retained model/evaluation baseline. Product API/frontend dependencies are added
-# by their owners after implementing the documented stack.
+# Local model and evaluation environment.
+# Pinned container dependencies are in deployment/requirements-runtime.txt.
 numpy>=1.26,<3
 opencv-python>=4.9,<5
 opencv-contrib-python>=4.9,<5
