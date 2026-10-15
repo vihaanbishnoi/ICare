@@ -31,7 +31,7 @@ flowchart LR
     API --> Worker[Job runner]
     API <--> Store[(SQLite and private files)]
     Worker <--> Engine[Isolated model process]
-    Engine --> Pose[YOLOX tiny and RTMPose small]
+    Engine --> Pose[YOLO26n pose, one pass]
     Pose --> Buffer[Timestamped pose buffer]
     Buffer --> Heatmaps[Joint heatmaps]
     Heatmaps --> Model[PoseC3D ONNX]
@@ -41,8 +41,9 @@ flowchart LR
     API --> Browser
 ```
 
-The engine samples frames at six per source second, follows the largest detected
-person and estimates 17 COCO joints. A rolling pose window is resampled to 48
+The engine samples frames at six per source second. One YOLO26n-pose pass per
+frame (ONNX, NMS-free) returns every person with 17 COCO joints; the largest
+person is followed. A rolling pose window is resampled to 48
 temporal positions and converted to a `1 x 17 x 48 x 64 x 64` heatmap tensor.
 PoseC3D produces `No Fall` and `Fall` probabilities through ONNX Runtime.
 
@@ -60,8 +61,8 @@ docker compose up --build -d --wait
 ```
 
 Open [http://127.0.0.1:7860](http://127.0.0.1:7860) and choose **Upload Your Video**.
-MP4 uploads are limited to 50 MB and 60 seconds by default. Initial builds download
-and verify the pose weights; subsequent container startup uses the baked cache.
+MP4 uploads are limited to 50 MB and 60 seconds by default. Both ONNX models are
+versioned in `models/`, so builds and startup need no model download.
 Jobs run one at a time and private results expire after 24 hours.
 
 ```sh
@@ -180,5 +181,24 @@ Synthetic test adapters verify behavior and are not accuracy evidence.
 - CPU processing can take longer than the source clip. No real-time throughput guarantee is made.
 - The custom rolling-window preprocessing is not proven equivalent to the original full-clip validation pipeline.
 - Urgency and reliability are diagnostic signals, not an adaptive scheduler or calibrated safety assessment.
+- PoseC3D was fine-tuned on poses from a different estimator. With YOLO26n-pose the
+  bundled fall clip still raises one incident at 5.33 s, but P(Fall) there is 0.51
+  instead of 0.94 (peak 0.79 instead of 0.97); the normal clip stays at or below 0.03.
+  YOLO26 keypoint scores are near 0 or 1 where RTMPose gave moderate values. Recalibrating
+  or fine-tuning on YOLO26 poses needs labelled validation videos, not these two clips.
+
+## Model files and licences
+
+| File | Model | Licence |
+| --- | --- | --- |
+| `models/posec3d_fall.onnx` | PoseC3D SlowOnly-R50, fine-tuned for Fall / No Fall | Project weights (MMAction2 base) |
+| `models/yolo26n_pose.onnx` | Ultralytics YOLO26n-pose, end-to-end ONNX export | **AGPL-3.0** ([Ultralytics licence](https://ultralytics.com/license)) |
+
+`models/yolo26n_pose.json` records the file's SHA-256, which the engine checks at
+load, and the source weights and Ultralytics version. Regenerate it with
+`python -m icare.tools.export_pose_model` after `pip install ultralytics==8.4.177 onnx onnxslim`
+(development only; the product needs neither Ultralytics nor PyTorch). Serving
+AGPL-3.0 weights over a network obliges offering the corresponding source of the
+service to its users; confirm that this fits the project before public release.
 
 ICare is a research prototype, not a medical device or emergency response service.

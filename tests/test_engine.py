@@ -33,7 +33,7 @@ from icare.inference.engine import (
     PoseC3DEngine,
     load_engine,
 )
-from icare.inference.pose import PoseFrame, RTMPoseExtractor
+from icare.inference.pose import PoseFrame, PoseModelError, Yolo26PoseExtractor, decode, letterbox
 from icare.inference.posec3d_bridge import pose_sequence_to_heatmaps
 
 
@@ -180,16 +180,16 @@ class SamplingTests(EngineTestCase):
         self.assertEqual(comparable(first[2]), comparable(second[2]))
 
     def test_summary_reports_source_dimensions_and_decoded_duration(self) -> None:
-        clip = write_clip(self.tmp / "wide.avi", fps=25, seconds=4, size=(832, 468))
+        clip = write_clip(self.tmp / "wide.avi", fps=25, seconds=4, size=(1280, 720))
         extractor = ScriptedExtractor()
         summary, poses, _, _ = collect(self.make_engine(extractor), clip)
-        self.assertEqual((summary["frame_width"], summary["frame_height"]), (832, 468))
+        self.assertEqual((summary["frame_width"], summary["frame_height"]), (1280, 720))
         self.assertAlmostEqual(summary["duration_seconds"], 4.0, places=3)
-        # The model saw a 416-wide frame, but emitted coordinates are source pixels.
-        self.assertEqual(extractor.shapes[0][:2], (234, 416))
-        self.assertAlmostEqual(poses[0]["keypoints"][8][0], 832 * 0.5, delta=0.01)
-        self.assertAlmostEqual(poses[0]["bbox_xyxy"][2], 832 * 0.65, delta=0.01)
-        self.assertAlmostEqual(poses[0]["bbox_xyxy"][3], 468 * 0.95, delta=0.01)
+        # The model saw a 640-wide frame, but emitted coordinates are source pixels.
+        self.assertEqual(extractor.shapes[0][:2], (360, 640))
+        self.assertAlmostEqual(poses[0]["keypoints"][8][0], 1280 * 0.5, delta=0.01)
+        self.assertAlmostEqual(poses[0]["bbox_xyxy"][2], 1280 * 0.65, delta=0.01)
+        self.assertAlmostEqual(poses[0]["bbox_xyxy"][3], 720 * 0.95, delta=0.01)
 
 
 class CompletionTests(EngineTestCase):
@@ -492,26 +492,116 @@ class ConfigAndLoadingTests(EngineTestCase):
 
         code = (
             "import sys, icare.inference.engine, icare.inference.engine_model;"
-            "bad = [m for m in ('onnxruntime', 'rtmlib', 'psutil') if m in sys.modules];"
+            "bad = [m for m in ('onnxruntime', 'psutil') if m in sys.modules];"
             "sys.exit(1 if bad else 0)"
         )
         result = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr.decode())
 
 
-class ExtractorForkTests(unittest.TestCase):
-    def test_fork_shares_models_but_not_tracking_state(self) -> None:
-        # Built without loading rtmlib: only the state fork() must separate matters.
-        base = object.__new__(RTMPoseExtractor)
-        base.lock = threading.Lock()
-        base.detector, base.pose_estimator = object(), object()
-        base.detection_frequency = 1
-        base.frame_index, base.primary_box, base.detected_people = 7, np.ones((1, 5)), 2
-        clone = base.fork()
-        self.assertEqual((clone.frame_index, clone.primary_box, clone.detected_people), (0, None, 0))
-        self.assertEqual((base.frame_index, base.detected_people), (7, 2))
-        self.assertIs(clone.detector, base.detector)
-        self.assertIs(clone.lock, base.lock)
+def pose_row(box, score, keypoints):
+    """One end-to-end YOLO26 output row: box, score, class 0, 17 x (x, y, visibility)."""
+    return np.concatenate([np.asarray(box, np.float32), [score, 0.0],
+                           np.asarray(keypoints, np.float32).reshape(-1)])
+
+
+class FakePoseSession:
+    """Stands in for onnxruntime: returns fixed rows in letterboxed input pixels."""
+
+    def __init__(self, rows):
+        self.output = np.zeros((1, 300, 57), np.float32)
+        for i, row in enumerate(rows):
+            self.output[0, i] = row
+        self.inputs_seen = []
+
+    def get_inputs(self):
+        return [type("Input", (), {"name": "images"})()]
+
+    def run(self, _names, feed):
+        self.inputs_seen.append(feed["images"])
+        return [self.output]
+
+
+class Yolo26DecodingTests(unittest.TestCase):
+    def test_letterbox_pads_a_wide_frame_symmetrically(self) -> None:
+        tensor, scale, pad_x, pad_y = letterbox(np.zeros((360, 640, 3), np.uint8))
+        self.assertEqual(tensor.shape, (1, 3, 640, 640))
+        self.assertEqual((scale, pad_x, pad_y), (1.0, 0.0, 140.0))
+        self.assertAlmostEqual(float(tensor[0, 0, 0, 0]), 114 / 255, places=6)  # padding grey
+        self.assertEqual(float(tensor[0, 0, 140, 0]), 0.0)  # first image row
+
+    def test_decode_maps_letterboxed_points_back_to_source_pixels(self) -> None:
+        # 1280x720 source -> scale 0.5, 140 px of padding above and below.
+        keypoints = np.tile([[100.0, 240.0, 0.9]], (17, 1))
+        rows = decode(pose_row([50, 190, 150, 290], 0.8, keypoints)[None],
+                      0.5, 0.0, 140.0, 1280, 720, 0.35)
+        np.testing.assert_allclose(rows[0, :4], [100, 100, 300, 300])
+        np.testing.assert_allclose(rows[0, 6:].reshape(17, 3)[0], [200, 200, 0.9], rtol=1e-6)
+
+    def test_decode_keeps_off_frame_keypoints_unclipped(self) -> None:
+        keypoints = np.tile([[-20.0, 300.0, 0.1]], (17, 1))
+        rows = decode(pose_row([0, 0, 100, 100], 0.9, keypoints)[None], 1.0, 0.0, 0.0, 640, 640, 0.35)
+        self.assertEqual(float(rows[0, 6]), -20.0)
+
+    def test_decode_drops_low_scores_and_non_finite_rows(self) -> None:
+        good = pose_row([0, 0, 10, 10], 0.9, np.ones((17, 3)))
+        low = pose_row([0, 0, 10, 10], 0.2, np.ones((17, 3)))
+        broken = good.copy(); broken[7] = np.nan
+        self.assertEqual(len(decode(np.stack([good, low, broken]), 1.0, 0.0, 0.0, 64, 64, 0.35)), 1)
+
+    def test_extractor_follows_the_largest_person_and_counts_everyone(self) -> None:
+        small = pose_row([0, 140, 50, 240], 0.9, np.full((17, 3), 1.0))
+        large = pose_row([100, 140, 400, 500], 0.6, np.full((17, 3), 2.0))
+        extractor = Yolo26PoseExtractor(FakePoseSession([small, large]))
+        pose = extractor.extract(np.zeros((360, 640, 3), np.uint8), 1.5)
+        self.assertEqual(pose.detected_people, 2)
+        np.testing.assert_allclose(pose.bbox, [100, 0, 400, 360])  # clipped to the frame
+        self.assertEqual(pose.timestamp_seconds, 1.5)
+        self.assertIs(extractor.fork(), extractor)  # stateless: nothing to carry across clips
+
+    def test_no_person_above_the_threshold_is_no_pose(self) -> None:
+        weak = pose_row([0, 0, 50, 50], 0.2, np.ones((17, 3)))
+        self.assertIsNone(Yolo26PoseExtractor(FakePoseSession([weak])).extract(
+            np.zeros((64, 64, 3), np.uint8), 0.0))
+
+
+@unittest.skipUnless(HAS_ONNXRUNTIME, "onnxruntime is not installed")
+class RealPoseModelTests(EngineTestCase):
+    """Real YOLO26n-pose weights on a real example frame."""
+
+    def test_detects_the_person_in_the_fall_example(self) -> None:
+        extractor = Yolo26PoseExtractor.load(ROOT / "models" / "yolo26n_pose.onnx")
+        self.assertRegex(extractor.model_version, r"^yolo26n_pose\.onnx@[0-9a-f]{12}$")
+        capture = cv2.VideoCapture(str(ROOT / "examples" / "fall_example_01.mp4"))
+        ok, frame = capture.read()
+        capture.release()
+        self.assertTrue(ok)
+        pose = extractor.extract(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), 0.0)
+        self.assertIsNotNone(pose)
+        self.assertEqual(pose.keypoints.shape, (17, 3))
+        x1, y1, x2, y2 = pose.bbox
+        self.assertTrue(0 <= x1 < x2 <= frame.shape[1] and 0 <= y1 < y2 <= frame.shape[0])
+
+    def test_altered_weights_are_rejected_by_hash(self) -> None:
+        bad = self.tmp / "yolo26n_pose.onnx"
+        bad.write_bytes((ROOT / "models" / "yolo26n_pose.onnx").read_bytes()[:-1] + b"x")
+        shutil.copy(ROOT / "models" / "yolo26n_pose.json", self.tmp / "yolo26n_pose.json")
+        with self.assertRaisesRegex(PoseModelError, "SHA-256"):
+            Yolo26PoseExtractor.load(bad)
+
+    def test_engine_version_names_both_models(self) -> None:
+        engine = load_engine({"model_path": ROOT / "models" / "posec3d_fall.onnx"})
+        try:
+            self.assertRegex(engine.model_version,
+                             r"^posec3d_fall\.onnx@[0-9a-f]{12}\+yolo26n_pose\.onnx@[0-9a-f]{12}$")
+            self.assertEqual(engine.describe()["inference_width"], 640)
+        finally:
+            engine.close()
+
+    def test_missing_pose_model_is_model_unavailable(self) -> None:
+        with self.assertRaisesRegex(ModelUnavailableError, "Pose model"):
+            load_engine({"model_path": ROOT / "models" / "posec3d_fall.onnx",
+                         "pose_model_path": self.tmp / "missing.onnx"})
 
 
 class PreprocessingTests(unittest.TestCase):

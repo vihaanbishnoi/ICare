@@ -1,10 +1,8 @@
 # Local model and evaluation environment.
 # Pinned container dependencies are in deployment/requirements-runtime.txt.
 numpy>=1.26,<3
-opencv-python>=4.9,<5
-opencv-contrib-python>=4.9,<5
+opencv-python-headless>=4.9,<5
 onnxruntime>=1.18,<2
-rtmlib>=0.0.13,<1
 psutil>=5.9,<8
 matplotlib>=3.8,<4
 

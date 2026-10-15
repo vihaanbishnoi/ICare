@@ -1,6 +1,6 @@
 """Model loading and verification for icare.inference.engine.
 
-Everything that needs onnxruntime or rtmlib is imported inside a function, so
+Everything that needs onnxruntime is imported inside a function, so
 importing this module is side-effect free.
 """
 from __future__ import annotations
@@ -133,13 +133,16 @@ class OnnxTemporalClassifier:
 
 
 def load_pose_extractor(config: EngineConfig):
-    """YOLOX-tiny + RTMPose-s (COCO-17). rtmlib downloads and caches the weights."""
+    """One-shot YOLO26n-pose (COCO-17) from the versioned ONNX file."""
 
-    from icare.inference.pose import RTMPoseExtractor
+    from icare.inference.pose import Yolo26PoseExtractor
 
+    path = config.pose_model_path or config.model_path.with_name("yolo26n_pose.onnx")
     try:
-        return RTMPoseExtractor(device=config.device, detection_frequency=config.detection_frequency)
-    except Exception as exc:  # noqa: BLE001 - missing package, no network and no cache, bad cache
+        return Yolo26PoseExtractor.load(
+            path, device=config.device, score_threshold=config.person_score_threshold
+        )
+    except Exception as exc:  # noqa: BLE001 - missing/altered file, bad interface
         raise ModelUnavailableError(
-            f"Pose models could not be loaded: {type(exc).__name__}: {exc}"
+            f"Pose model could not be loaded: {type(exc).__name__}: {exc}"
         ) from exc

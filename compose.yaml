@@ -3,9 +3,6 @@ services:
     build:
       context: .
       dockerfile: deployment/Dockerfile.api
-      args:
-        # 1 bakes the pose weights into the image (starts ready offline); 0 skips.
-        PRELOAD_MODELS: ${ICARE_PRELOAD_MODELS:-1}
     init: true
     environment:
       ICARE_API_DATA_DIR: /app/artifacts/api
