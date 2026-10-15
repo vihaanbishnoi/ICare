@@ -2,9 +2,8 @@
 
     python -m icare.tools.run_engine_clip path/to/clip.mp4 --output artifacts/engine/clip.json
 
-Uses the real YOLOX/RTMPose/PoseC3D models (rtmlib downloads and caches the pose
-models on first use). Output goes to ignored artifacts/ by default; it is local
-execution evidence, not a file to commit.
+Uses the real YOLO26n-pose and PoseC3D ONNX models from models/. Output goes to
+ignored artifacts/ by default; it is local execution evidence, not a file to commit.
 """
 from __future__ import annotations
 

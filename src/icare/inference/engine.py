@@ -1,6 +1,6 @@
 """Deterministic offline fall-analysis engine (inference contract v1).
 
-Importing this module loads no model and touches no network: onnxruntime, rtmlib
+Importing this module loads no model and touches no network: onnxruntime
 and psutil are imported only inside ``load_engine`` and the helpers it calls.
 The API adapter implements the same callbacks without importing HTTP code.
 """
@@ -80,16 +80,19 @@ class EngineConfig:
 
     model_path: Path
     metadata_path: Path | None = None
+    # YOLO26n-pose ONNX; defaults to yolo26n_pose.onnx beside the PoseC3D model.
+    pose_model_path: Path | None = None
     device: str = "cpu"
     sample_fps: float = 6.0
-    inference_width: int = 416
+    # Frames wider than this are shrunk before pose estimation. 640 matches the
+    # pose model input, so a 1280 px frame is not shrunk and then upscaled again.
+    inference_width: int = 640
     prediction_interval_seconds: float = 0.75
     # A person missing for longer than this ends the track: the temporal window
     # restarts instead of interpolating a pose across the absence. None disables.
     max_pose_gap_seconds: float | None = 1.0
-    # Offline clips already sample sparsely (6/s), so a reused detector box would
-    # be stale for >= 0.33 s. Detect on every sampled frame by default.
-    detection_frequency: int = 1
+    # Minimum YOLO26 person score for a detection to count.
+    person_score_threshold: float = 0.35
 
     def __post_init__(self) -> None:
         if not (math.isfinite(self.sample_fps) and self.sample_fps > 0):
@@ -98,8 +101,8 @@ class EngineConfig:
             raise ValueError("inference_width must be at least 64 pixels")
         if self.prediction_interval_seconds < 0:
             raise ValueError("prediction_interval_seconds must not be negative")
-        if self.detection_frequency < 1:
-            raise ValueError("detection_frequency must be at least 1")
+        if not 0.0 < self.person_score_threshold < 1.0:
+            raise ValueError("person_score_threshold must be between 0 and 1")
 
     @classmethod
     def from_mapping(cls, config: Mapping[str, Any]) -> "EngineConfig":
@@ -112,8 +115,9 @@ class EngineConfig:
 
         values = dict(config)
         known = {
-            "model_path", "metadata_path", "device", "sample_fps", "inference_width",
-            "prediction_interval_seconds", "max_pose_gap_seconds", "detection_frequency",
+            "model_path", "metadata_path", "pose_model_path", "device", "sample_fps",
+            "inference_width", "prediction_interval_seconds", "max_pose_gap_seconds",
+            "person_score_threshold",
         }
         unknown = sorted(set(values) - known)
         if unknown:
@@ -121,8 +125,9 @@ class EngineConfig:
         if "model_path" not in values:
             raise ValueError("model_path is required")
         values["model_path"] = Path(values["model_path"])
-        if values.get("metadata_path") is not None:
-            values["metadata_path"] = Path(values["metadata_path"])
+        for key in ("metadata_path", "pose_model_path"):
+            if values.get(key) is not None:
+                values[key] = Path(values[key])
         if "inference_width" not in values and os.environ.get("ICARE_INFERENCE_WIDTH"):
             values["inference_width"] = int(os.environ["ICARE_INFERENCE_WIDTH"])
         return cls(**values)
@@ -279,7 +284,11 @@ class PoseC3DEngine:
         info: Mapping[str, Any] | None = None,
     ) -> None:
         self.config = config
-        self.model_version: str | None = classifier.model_version
+        # Results depend on both models, so both hashes identify a release.
+        self.pose_model_version: str | None = getattr(extractor, "model_version", None) or None
+        self.model_version: str | None = "+".join(
+            v for v in (classifier.model_version, self.pose_model_version) if v
+        )
         self._extractor: PoseExtractor | None = extractor
         self._classifier: TemporalClassifier | None = classifier
         self._buffer_settings = {
@@ -307,7 +316,8 @@ class PoseC3DEngine:
             "inference_width": self.config.inference_width,
             "prediction_interval_seconds": self.config.prediction_interval_seconds,
             "max_pose_gap_seconds": self.config.max_pose_gap_seconds,
-            "detection_frequency": self.config.detection_frequency,
+            "pose_model_version": self.pose_model_version,
+            "person_score_threshold": self.config.person_score_threshold,
             **{key: value for key, value in self._buffer_settings.items()},
         }
 
@@ -601,9 +611,8 @@ def load_engine(config: Mapping[str, Any] | EngineConfig) -> PoseC3DEngine:
     """Load and verify everything, then return a ready engine.
 
     Raises ModelUnavailableError (code ``model_unavailable``) when the weights,
-    metadata, ONNX interface or pose models cannot be verified. Pose detector and
-    estimator weights are fetched and cached by rtmlib on first use; a host
-    without network access and without that cache fails here, not mid-job.
+    metadata, ONNX interface or pose model cannot be verified. Both ONNX files are
+    versioned in models/, so loading needs no network access.
     """
 
     from icare.inference import engine_model

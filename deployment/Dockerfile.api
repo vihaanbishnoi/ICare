@@ -3,18 +3,12 @@
 FROM python:3.11-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    # rtmlib caches YOLOX/RTMPose weights under $TORCH_HOME/hub/checkpoints.
-    TORCH_HOME=/opt/icare/model-cache \
     ICARE_POSEC3D_MODEL=/app/models/posec3d_fall.onnx
 WORKDIR /app
 
-# One OpenCV only (headless). rtmlib is installed --no-deps so its metadata
-# cannot add opencv-python/opencv-contrib-python beside it; see the comments
-# in deployment/requirements-runtime.txt.
-COPY deployment/requirements-runtime.txt deployment/rtmlib.txt /tmp/deps/
-RUN pip install -r /tmp/deps/requirements-runtime.txt \
- && pip install --no-deps -r /tmp/deps/rtmlib.txt \
- && rm -rf /tmp/deps
+# Pinned runtime with a single (headless) OpenCV; see requirements-runtime.txt.
+COPY deployment/requirements-runtime.txt /tmp/requirements-runtime.txt
+RUN pip install -r /tmp/requirements-runtime.txt && rm /tmp/requirements-runtime.txt
 
 COPY pyproject.toml ./
 COPY src/icare ./src/icare
@@ -22,19 +16,14 @@ RUN pip install --no-deps -e .
 COPY models ./models
 COPY examples ./examples
 
-# 1 (default): download the pose weights and load the full engine once at build
-# time, so the container starts ready without network access and a broken model
-# fails the build instead of the first visitor. 0: skip (CI); /ready then needs
-# the host to reach the model URLs in src/icare/inference/pose.py at startup.
-ARG PRELOAD_MODELS=1
-RUN mkdir -p "$TORCH_HOME" \
- && if [ "$PRELOAD_MODELS" = "1" ]; then \
-      python -c "from icare.inference.engine import load_engine; load_engine({'model_path': '$ICARE_POSEC3D_MODEL', 'device': 'cpu'}).close()"; \
-    fi
+# Both ONNX models are in the image. Load and verify the whole engine (hashes,
+# interfaces, one forward pass each) so a broken model fails the build instead
+# of the first visitor. No network access is needed here or at startup.
+RUN python -c "from icare.inference.engine import load_engine; load_engine({'model_path': '$ICARE_POSEC3D_MODEL', 'device': 'cpu'}).close()"
 
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin icare \
     && mkdir -p /app/artifacts \
-    && chown -R icare:icare /app/artifacts "$TORCH_HOME"
+    && chown -R icare:icare /app/artifacts
 USER icare
 EXPOSE 8000
 # The API is reachable only from the web (nginx) container, which overwrites

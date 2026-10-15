@@ -257,7 +257,7 @@ function HowItWorks() {
             </div>
             <div className="pipeline-step__num" aria-hidden="true">02</div>
             <h3 className="pipeline-step__title">Person Detection</h3>
-            <p className="pipeline-step__desc">YOLOX-tiny finds the largest person on every sampled frame in the offline engine.</p>
+            <p className="pipeline-step__desc">One YOLO26n-pose pass finds every person in each sampled frame; the largest is followed.</p>
           </div>
           <div className="pipeline-arrow" aria-hidden="true">→</div>
           <div className="pipeline-step" role="listitem">
@@ -272,7 +272,7 @@ function HowItWorks() {
             </div>
             <div className="pipeline-step__num" aria-hidden="true">03</div>
             <h3 className="pipeline-step__title">Pose Estimation</h3>
-            <p className="pipeline-step__desc">RTMPose-s estimates 17 COCO body keypoints per frame with per-joint confidence scores.</p>
+            <p className="pipeline-step__desc">The same pass returns 17 COCO body keypoints with a visibility score per joint.</p>
           </div>
           <div className="pipeline-arrow" aria-hidden="true">→</div>
           <div className="pipeline-step" role="listitem">
@@ -380,7 +380,7 @@ function Limitations() {
     { icon: '👤', title: 'Single Person Only', body: 'Tracks only the largest detected person. Multi-person identity tracking is not implemented.' },
     { icon: '📊', title: 'Group-Aware, Not Subject-Independent', body: 'Prevents groups from crossing folds. Subject IDs unavailable — results may not generalise to unseen individuals.' },
     { icon: '⚡', title: 'CPU Processing', body: 'Analysis can take longer than playback. Processing times depend on the clip and CPU environment.' },
-    { icon: '🔬', title: 'Train/Deploy Domain Gap', body: 'RTMPose at deployment may differ from the pose generator used during training. Gap not yet quantified.' },
+    { icon: '🔬', title: 'Train/Deploy Domain Gap', body: 'PoseC3D was trained on poses from a different estimator than YOLO26n-pose. On the fall example the peak score drops from 0.97 to 0.79. Not yet recalibrated.' },
     { icon: '🚫', title: 'Not a Medical Device', body: 'ICare is a research prototype. Must not be used as an emergency response or clinical monitoring system.' },
     { icon: '📋', title: 'Diagnostic Motion Signals', body: 'Motion urgency and pose reliability support inspection; they do not control classifier scheduling.' },
   ];
@@ -468,7 +468,7 @@ function Hero({ onNav }: { onNav: (tab: DemoTab) => void }) {
         </h1>
         <p className="hero__subtitle">
           Temporal pose analysis for offline video-based fall detection.<br />
-          <span className="hero__stack">YOLOX · RTMPose · PoseC3D · ONNX Runtime</span>
+          <span className="hero__stack">YOLO26n-pose · PoseC3D · ONNX Runtime</span>
         </p>
         <div className="hero__actions">
           <button className="btn btn--primary" id="hero-btn-fall" onClick={() => { document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' }); onNav('fall'); }}>

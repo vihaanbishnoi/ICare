@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, FiniteFloat
 
-# Keep finite raw RTMPose scores; only fall_probability is a probability.
+# Keep finite raw pose-model keypoint scores; only fall_probability is a probability.
 KeypointScore = FiniteFloat
 
 
