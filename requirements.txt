@@ -1,10 +1,8 @@
-# Local model and evaluation environment.
-# Pinned container dependencies are in deployment/requirements-runtime.txt.
+# Local CPU inference and resource measurements.
 numpy>=1.26,<3
 opencv-python-headless>=4.9,<5
 onnxruntime>=1.18,<2
 psutil>=5.9,<8
-matplotlib>=3.8,<4
 
 # Web API
 fastapi==0.142.4

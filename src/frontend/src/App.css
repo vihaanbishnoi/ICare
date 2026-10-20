@@ -144,13 +144,6 @@ a { color: inherit; }
 .video-placeholder__idle p { color: var(--text-secondary); font-size: 0.9rem; }
 .video-placeholder__meta { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted); }
 
-/* EXAMPLE SELECTOR */
-.example-selector { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.example-selector__label { font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
-.example-selector__select { flex: 1; min-width: 200px; background: var(--color-surface); color: var(--text-primary); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 0.9rem; font-family: var(--font-sans); cursor: pointer; outline: none; }
-.example-selector__select:focus { border-color: var(--color-primary); }
-.example-selector__select:disabled { opacity: 0.5; cursor: not-allowed; }
-.example-selector__select option { background: var(--color-surface); color: var(--text-primary); }
 
 /* JOB CARD */
 .job-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
@@ -300,14 +293,10 @@ a { color: inherit; }
 
 /* Shared local dashboard and static preview */
 .mode-notice { padding: 14px 18px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); color: var(--text-secondary); margin-bottom: 20px; font-size: .85rem; }
-.sample-label { color: #fbbf24; font-size: .82rem; padding: 10px 16px; line-height: 1.5; }
-.recorded-label { color: #6ee7b7; padding: 14px; font-size: .85rem; }
 .blank-demo { min-height: 360px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; text-align: center; padding: 32px; border: 1px dashed var(--color-border); }
 .blank-demo p { font-size: 1rem; }
 .blank-demo span { color: var(--text-muted); font-size: .85rem; }
 .blank-demo .blank-demo__icon { font-size: 3.5rem; color: var(--color-primary); }
-.recording-select { display: flex; flex-direction: column; gap: 8px; margin: 16px; }
-.recording-select select { padding: 12px; color: var(--text-primary); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px; }
 .metric-card__value--pending { font-size: 1.2rem; color: var(--text-secondary); }
 .evaluation-note { margin-top: 24px; color: var(--text-muted); text-align: center; line-height: 1.7; }
 .live-dashboard { display: flex; flex-direction: column; gap: 20px; }

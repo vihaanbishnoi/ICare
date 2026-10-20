@@ -1,7 +1,7 @@
 """Command-line evaluation runner for the ICare inference engine.
 
 Usage:
-    python -m icare.evaluation.run_benchmarks --catalog examples/catalog.json --output artifacts/evaluation/benchmark_report.json
+    python -m icare.evaluation.run_benchmarks --catalog data/catalog.json --output artifacts/evaluation/benchmark_report.json
 
 Notes:
     - Runs the real inference engine (icare.inference.engine.load_engine).
@@ -34,7 +34,7 @@ def load_annotations_from_catalog(catalog_path: Path) -> Tuple[List[ClipAnnotati
         clip_id = item.get("example_id", item.get("id"))
         relative = Path(item.get('file', item.get('filename', '')))
         # Catalog files are relative to the catalog; manifest filenames may be
-        # repository-root paths. Do not prepend examples twice.
+        # repository-root paths. Avoid repeating the parent directory.
         filename = (catalog_path.parent / relative).resolve()
         if 'file' not in item and relative.parts and relative.parts[0] == catalog_path.parent.name:
             filename = (catalog_path.parent.parent / relative).resolve()
@@ -122,7 +122,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument(
         "--catalog",
         type=Path,
-        default=Path("examples/catalog.json"),
+        required=True,
         help="Path to catalog JSON containing clip annotations"
     )
     parser.add_argument(

@@ -19,7 +19,7 @@ Keep application code under src/, with optional experiments in icare/evaluation.
 
 Run python -m icare.tools.check_repository. For frontend changes, run npm run build,
 npm run build:static and npm run lint. This local inference demo has no automated
-test suite. Distinguish illustrative fixtures from real model evidence.
+test suite. Do not add invented examples or model evidence.
 
 Keep secrets, private videos, datasets, caches and generated outputs out of Git.
 Historical metrics are group-aware, not verified subject-independent. Do not

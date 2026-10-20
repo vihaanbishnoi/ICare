@@ -2,7 +2,7 @@
  * API client — all calls use relative /api/v1 URLs (same-origin requirement).
  * Never construct absolute URLs here; the cookie is SameSite=strict.
  */
-import type { Example, Job, Result, LiveSession, LiveFrame, LiveHistory } from '../types';
+import type { Job, Result, LiveSession, LiveFrame, LiveHistory } from '../types';
 
 const BASE = '/api/v1';
 
@@ -18,21 +18,6 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     throw Object.assign(new Error(msg), { status: res.status, code: errBody?.error?.code });
   }
   return res.status === 204 ? undefined as T : res.json() as Promise<T>;
-}
-
-/** GET /api/v1/examples */
-export async function fetchExamples(): Promise<Example[]> {
-  const data = await apiFetch<{ examples: Example[] }>('/examples');
-  return data.examples;
-}
-
-/** POST /api/v1/jobs/example  →  202 Job */
-export async function startExampleJob(exampleId: string): Promise<Job> {
-  return apiFetch<Job>('/jobs/example', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ example_id: exampleId }),
-  });
 }
 
 /** POST /api/v1/jobs/upload  →  202 Job */

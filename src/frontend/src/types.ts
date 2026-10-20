@@ -10,26 +10,11 @@ export interface ErrorDetail {
   message: string;
 }
 
-export interface Example {
-  example_id: string;
-  title: string;
-  expected_outcome: 'fall' | 'no_fall';
-  video_url: string;
-  duration_seconds: number;
-  analysis_mode: 'cached' | 'on_demand';
-  model_version: string | null;
-  provenance: string;
-}
-
-export interface ExamplesResponse {
-  examples: Example[];
-}
-
 export interface Job {
   job_id: string;
   state: JobState;
   progress: number | null;
-  source_kind: 'example' | 'upload';
+  source_kind: 'upload';
   created_at_utc: string;
   model_version: string | null;
   result_url: string | null;
@@ -98,8 +83,4 @@ export interface LiveFrame {
   status: 'no_person' | 'warming_up' | 'monitoring'; coverage_seconds: number; pose_count: number;
   track_resets: number; frames_processed: number; processed_fps: number; processing_ms: number;
   incident: LiveIncident | null; incident_latched: boolean;
-}
-
-export interface PublicExample {
-  id: string; title: string; approved: boolean; video: string; result: string; csv?: string;
 }

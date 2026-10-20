@@ -1,6 +1,6 @@
 /** Shared local dashboard and static research preview; data sources remain explicit. */
 import { useEffect, useRef, useState } from 'react';
-import { ExamplePanel } from './components/ExamplePanel';
+import { StaticPreviewPanel } from './components/StaticPreviewPanel';
 import { UploadPanel } from './components/UploadPanel';
 import { LivePanel } from './components/LivePanel';
 import { STATIC_DEMO } from './config';
@@ -157,7 +157,7 @@ function DemoSection({ tab, onTabChange }: { tab: DemoTab; onTabChange: (tab: De
         ? 'Explore the interface. Video recordings and validated performance results are not yet provided.'
         : 'Use your webcam or analyze a short MP4. All model inference runs on your local CPU.'}</p>
     </div>
-    {STATIC_DEMO ? <ExamplePanel staticMode /> : <>
+    {STATIC_DEMO ? <StaticPreviewPanel /> : <>
       <div className="mode-notice local-mode">Local application · FastAPI and both ONNX models required · No cloud inference</div>
       <div className="tabs" role="tablist" aria-label="Detection mode">
         <button className={`tab${tab === 'live' ? ' tab--active' : ''}`} id="tab-live" role="tab"
@@ -293,7 +293,7 @@ function Limitations() {
     { icon: '03', title: 'Temporal context required', body: 'PoseC3D needs continuous motion history. Missing-person gaps reset coverage; no confidence is invented during warm-up.' },
     { icon: '04', title: 'Evaluation remains open', body: 'The pose estimator changed. The combined pipeline needs labelled evaluation before accuracy or reliability claims can be made.' },
     { icon: '05', title: 'Research prototype', body: 'Visual alerts are research outputs, not clinical assessments or an emergency response service.' },
-    { icon: '06', title: 'Static public preview', body: 'The public site has no camera inference or uploads. Illustrative charts are labelled separately from any future recorded model outputs.' },
+    { icon: '06', title: 'Static public preview', body: 'The public site has no camera inference, uploads or recorded results. Run locally to analyze your own video or camera frames.' },
   ];
   return (
     <section className="limitations-section" id="limitations" aria-labelledby="limitations-title">
@@ -350,7 +350,7 @@ function Hero({ onNav }: { onNav: (tab: DemoTab) => void }) {
             <button className="btn btn--outline" onClick={() => navigate('upload')}>Analyze Video</button></>}
       </div>
       <p className="hero__stats-disclaimer">{STATIC_DEMO
-        ? 'Illustrative data—not model output. Video demonstration not yet provided.'
+        ? 'No sample videos or inference results are included. Run locally to analyze your own footage.'
         : 'Runs locally on CPU. Camera access begins only when you press Start.'}</p>
     </div>
   </section>;

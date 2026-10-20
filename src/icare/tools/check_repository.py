@@ -46,15 +46,13 @@ def main() -> int:
                 link_count += 1
 
     required = [
-        "AGENTS.md", "README.md", "pyproject.toml",
+        "AGENTS.md", "README.md", "pyproject.toml", "requirements.txt",
         ".github/workflows/ci.yml",
         "models/posec3d_fall.onnx", "models/posec3d_runtime.json",
         "models/yolo26n-pose.onnx", "models/yolo26n-pose.json", "models/YOLO26_LICENSE",
-        "compose.yaml", "deployment/Dockerfile.api", "deployment/Dockerfile.web",
         "src/icare/inference/engine.py", "src/icare/api/main.py",
         "src/icare/inference/runtime.py", "src/icare/inference/camera.py",
         "src/icare/api/live.py", "src/frontend/build/publicAssets.ts",
-        "src/frontend/public/demos/catalog.json",
         "src/frontend/package-lock.json",
     ]
     for relative in required:

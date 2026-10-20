@@ -22,13 +22,12 @@ the current release; extending the scope requires literature review and evaluati
 - Incident detection with de-duplication across overlapping temporal windows.
 - Private browser-session jobs, cancellation and retry without duplicate submissions.
 - Isolated model execution with crash recovery, bounded queues and storage admission.
-- Docker Compose packaging for local CPU inference.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Browser[React: camera or upload] --> Proxy[nginx or Vite proxy]
+    Browser[React: camera or upload] --> Proxy[Vite proxy]
     Proxy --> API[FastAPI jobs]
     API --> Worker[Video job runner]
     API --> Live[Live session: one frame in flight]
@@ -63,18 +62,32 @@ An incident opens at `P(Fall) >= 0.50`. Three consecutive predictions below
 establish physical recovery. Source sampling cadence and wall-clock throughput
 are separate measurements.
 
-## Run with Docker
+## Run locally
 
-Start Docker Desktop or a Docker engine, then run from the repository root:
+Use Python 3.11 and Node 24 or newer. From the repository root in PowerShell:
 
-```sh
-docker compose up --build -d --wait
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install --no-deps -e .
+.\.venv\Scripts\python.exe -m uvicorn icare.api.main:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-Open [http://127.0.0.1:7860](http://127.0.0.1:7860) and choose **Live Detection** or
-**Analyze Video**.
+In a second terminal, also starting from the repository root:
+
+```powershell
+cd src/frontend
+npm ci
+npm run dev
+```
+
+Open the Vite URL printed in the terminal and choose **Live Detection** or
+**Analyze Video**. Its proxy keeps browser requests and API cookies on the same
+origin. `/api/v1/health` reports the service, and `/api/v1/ready` reports model
+availability. Stop each server with **Ctrl+C** in its terminal.
+
 MP4 uploads are limited to 50 MB and 60 seconds by default. Both ONNX weights are
-included in `models/` and verified during the build; inference needs no downloads.
+included in `models/` and validated when the engine starts; inference needs no downloads.
 Jobs run one at a time and private results expire after 24 hours.
 
 Press **Start Live Detection** to request camera permission. Localhost or HTTPS
@@ -90,39 +103,9 @@ capture-to-result time are measured separately. They are not camera FPS,
 fall-onset detection latency or a throughput guarantee. Slow hardware may not
 provide enough uninterrupted pose coverage for predictions.
 
-```sh
-docker compose logs --tail 100 api web
-docker compose down
-```
-
-Catalog examples require verified source, rights and labels. The bundled clips
-are diagnostic inputs and remain disabled by default. For local testing only,
-set `ICARE_ALLOW_UNVERIFIED_EXAMPLES=1` before starting Compose. The full set of
-non-secret configuration defaults is in [.env.example](.env.example).
-
-## Local development
-
-Use Python 3.11 and Node 24 or newer. In PowerShell:
-
-```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m pip install --no-deps -e .
-.\.venv\Scripts\python.exe -m uvicorn icare.api.main:create_app --factory --host 127.0.0.1 --port 8000
-```
-
-In a second terminal:
-
-```powershell
-cd src/frontend
-npm ci
-npm run dev
-```
-
-Open the Vite URL printed in the terminal. Its proxy keeps browser requests and
-API cookies on the same origin. The API reads shell environment variables;
-Compose loads its environment separately. `/api/v1/health` reports the service,
-and `/api/v1/ready` reports model availability.
+The API reads shell environment variables; it does not automatically load
+`.env` files. The non-secret configuration defaults are in
+[.env.example](.env.example).
 
 The product uses ONNX Runtime and headless OpenCV, without PyTorch, Ultralytics
 or RTMLib at runtime. To reproduce the pose export, use a separate environment
@@ -130,6 +113,20 @@ with `requirements-export.txt` and run `python -m icare.tools.export_pose_model`
 The [pose model metadata](models/yolo26n-pose.json) records the source, export
 arguments and checksums. The upstream weights use [Ultralytics licensing](https://www.ultralytics.com/license);
 the upstream [license text](models/YOLO26_LICENSE) is included with the model.
+
+The default install has seven direct dependencies: NumPy for tensors, headless
+OpenCV for frames, ONNX Runtime for the models, psutil for CPU/memory measurements,
+FastAPI and Uvicorn for the API, and python-multipart for video uploads. Pip also
+installs their supporting dependencies automatically.
+
+Matplotlib is optional and only needed for evaluation plots:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[evaluation]"
+```
+
+`requirements-export.txt` is only for rebuilding the pose model in a separate
+environment; it is not needed to run the included ONNX models.
 
 ## Static preview
 
@@ -141,17 +138,11 @@ npm run preview:static
 ```
 
 Open the printed URL under `/ICare/`. This build needs no API, webcam, Python,
-database or model weights. It initially shows a blank video and fixtures labelled
-**Illustrative data—not model output.** Current pipeline evaluation metrics remain
-**Not yet evaluated**. It offers no upload or live-inference controls.
-
-The public catalog is [`public/demos/catalog.json`](src/frontend/public/demos/catalog.json).
-It is intentionally empty. Future entries require `approved: true`, an `id`,
-`title`, and plain filenames for `video` (MP4), `result` (existing Result JSON
-schema), and optional `csv`. Their files belong alongside the catalog. The build
-rejects unlisted public assets, unsafe paths and symlinks. Recorded JSON supplies
-actual poses, predictions, incidents and provenance; the frontend never runs
-the models. The recording exporter is not implemented in this phase.
+database or model weights. It shows empty video and results placeholders;
+no sample clips, predictions or incidents are bundled. Current pipeline evaluation
+metrics remain **Not yet evaluated**. It offers no upload or live-inference
+controls. The static build only permits the app icons in `public/` and rejects
+additional files or symlinks.
 
 The Pages job is prepared but disabled unless the repository variable
 `ICARE_PAGES_ENABLED` equals `true`. After publication approval, configure GitHub
@@ -160,8 +151,7 @@ after checks pass on `main`. No publication is enabled by this checkout.
 
 ## Repository layout
 
-Application code lives in one source folder. Trained assets and deployment
-configuration are kept outside it so they do not obscure the inference pipeline.
+Application code lives in one source folder. Trained assets live in `models/`.
 
 ```text
 src/
@@ -172,8 +162,6 @@ src/
     tools/         Single-clip runner and repository checker
   frontend/        React/Vite application
 models/            Both ONNX models, metadata and pose-model license
-examples/          Diagnostic clips and catalog
-deployment/        Containers and nginx
 ```
 
 To follow the baseline, start with [`engine.py`](src/icare/inference/engine.py):
@@ -184,7 +172,7 @@ heatmaps, and [`engine_model.py`](src/icare/inference/engine_model.py) loads
 and validates the classifier. These modules run without the browser or API:
 
 ```sh
-python -m icare.tools.run_engine_clip examples/fall_example_01.mp4 --output artifacts/clip.json
+python -m icare.tools.run_engine_clip "C:/path/to/your-video.mp4" --output artifacts/clip.json
 ```
 
 Run commands from the checkout root after the editable installation. The

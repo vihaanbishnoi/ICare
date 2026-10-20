@@ -80,7 +80,7 @@ def save_plot(rows: list[dict], output: Path) -> None:
     try:
         import matplotlib.pyplot as plt
     except ImportError as exc:
-        raise RuntimeError("Install requirements.txt to create urgency plots.") from exc
+        raise RuntimeError('Install the optional plotting dependency with pip install -e ".[evaluation]".') from exc
 
     groups: dict[tuple[str, str], list[dict]] = {}
     for row in rows:
