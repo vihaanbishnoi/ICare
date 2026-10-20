@@ -21,30 +21,11 @@ class ErrorBody(BaseModel):
     error: ErrorDetail
 
 
-class Example(BaseModel):
-    example_id: str
-    title: str
-    expected_outcome: Literal["fall", "no_fall"]
-    video_url: str
-    duration_seconds: float
-    analysis_mode: Literal["cached", "on_demand"]
-    model_version: str | None
-    provenance: str
-
-
-class ExamplesResponse(BaseModel):
-    examples: list[Example]
-
-
-class ExampleJobRequest(BaseModel):
-    example_id: str
-
-
 class Job(BaseModel):
     job_id: str
     state: JobState
     progress: float | None = Field(ge=0, le=1)
-    source_kind: Literal["example", "upload"]
+    source_kind: Literal["upload"]
     created_at_utc: str
     model_version: str | None
     result_url: str | None

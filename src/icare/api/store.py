@@ -18,7 +18,6 @@ CREATE TABLE IF NOT EXISTS jobs (
     state TEXT NOT NULL,
     progress REAL,
     source_kind TEXT NOT NULL,
-    example_id TEXT,
     media_path TEXT NOT NULL,
     created_at_utc TEXT NOT NULL,
     model_version TEXT,

@@ -9,14 +9,12 @@ from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
-import json
 import logging
 from pathlib import Path
 import secrets
 import shutil
 import time
 from typing import Any
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, FastAPI, Request, Response
 from starlette.datastructures import UploadFile
@@ -28,7 +26,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from icare.api.config import Settings
 from icare.api.engine import Engine, load_real_engine
 from icare.api.results import job_url
-from icare.api.schemas import Example, ExampleJobRequest, ExamplesResponse, Incident, Job
+from icare.api.schemas import Incident, Job
 from icare.api.schemas import LiveFrame, LiveHistoryResponse, LiveSession
 from icare.api.store import ACTIVE_STATES, Store, utc_now
 from icare.api.video import InvalidVideo, mp4_duration_seconds
@@ -196,41 +194,14 @@ def job_document(job: dict) -> dict:
     ).model_dump()
 
 
-def load_examples(settings: Settings) -> list[dict]:
-    """Load verified catalog clips, with an explicit local diagnostic override."""
-
-    try:
-        raw = json.loads(settings.examples_manifest.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return []
-    examples = []
-    root = settings.examples_manifest.parent.resolve()
-    for entry in raw.get("examples", []):
-        if not settings.allow_unverified_examples and not (
-            entry.get('rights_status') == 'verified' and entry.get('source_url')
-            and entry.get('license') and entry.get('label_status') == 'verified'
-        ):
-            continue
-        document = Example.model_validate(entry).model_dump()
-        candidate = (root / entry["file"]).resolve()
-        if not candidate.is_relative_to(root) or not candidate.is_file() or candidate.suffix.lower() != ".mp4":
-            log.warning("Skipping unavailable or invalid example %s", document["example_id"])
-            continue
-        document["file"] = candidate
-        document["video_url"] = f"/api/v1/examples/{quote(document['example_id'], safe='')}/media"
-        examples.append(document)
-    return examples
-
-
-def new_job(request: Request, owner_key: str, source_kind: str,
-            media_path: Path, example_id: str | None = None, job_id: str | None = None) -> dict:
+def new_job(request: Request, owner_key: str,
+            media_path: Path, job_id: str | None = None) -> dict:
     job = {
         "job_id": job_id or secrets.token_urlsafe(16),
         "owner": owner_key,
         "state": "queued",
         "progress": None,
-        "source_kind": source_kind,
-        "example_id": example_id,
+        "source_kind": "upload",
         "media_path": str(media_path),
         "created_at_utc": utc_now(),
         "model_version": None,
@@ -247,7 +218,7 @@ def new_job(request: Request, owner_key: str, source_kind: str,
     return job
 
 
-def reserve_job(request: Request, owner_key: str, source_kind: str) -> str:
+def reserve_job(request: Request, owner_key: str) -> str:
     settings = request.app.state.settings
     remove_expired(request.app.state.store, settings)
     job_id = secrets.token_urlsafe(16)
@@ -255,7 +226,7 @@ def reserve_job(request: Request, owner_key: str, source_kind: str) -> str:
     # accept arbitrary client X-Forwarded-For headers here.
     peer = request.client.host if request.client else 'unknown'
     ip_key = hmac.new(request.app.state.admission_salt.encode(), peer.encode(), hashlib.sha256).hexdigest()
-    reserve = settings.result_reserve_bytes + (settings.max_upload_bytes if source_kind == 'upload' else 0)
+    reserve = settings.result_reserve_bytes + settings.max_upload_bytes
     cutoff = (datetime.now(timezone.utc) - timedelta(seconds=settings.admission_window_seconds)).isoformat()
     with request.app.state.live.lock:
         request.app.state.live.ensure_video_allowed()
@@ -355,40 +326,6 @@ def ready(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ready", "model_version": engine.model_version})
 
 
-@router.get("/examples", response_model=ExamplesResponse)
-def examples(request: Request) -> dict:
-    items = load_examples(request.app.state.settings)
-    return {"examples": [{k: v for k, v in e.items() if k != "file"} for e in items]}
-
-
-@router.get("/examples/{example_id}/media")
-def example_media(example_id: str, request: Request) -> FileResponse:
-    match = [entry for entry in load_examples(request.app.state.settings) if entry["example_id"] == example_id]
-    if not match:
-        raise ApiError(404, "not_found", "No example has that ID.")
-    return FileResponse(match[0]["file"], media_type="video/mp4")
-
-
-@router.post("/jobs/example", status_code=202, dependencies=[Depends(same_origin)])
-def create_example_job(body: ExampleJobRequest, request: Request,
-                       owner_key: str = Depends(owner)) -> dict:
-    require_engine(request)
-    settings: Settings = request.app.state.settings
-    match = [e for e in load_examples(settings) if e["example_id"] == body.example_id]
-    if not match:
-        raise ApiError(404, "not_found", "No approved example has that ID.")
-    job_id = reserve_job(request, owner_key, 'example')
-    try:
-        job_dir(settings, job_id).mkdir(parents=True)
-        # Public example media is read in place; never deleted with the job.
-        job = new_job(request, owner_key, "example", match[0]["file"], body.example_id, job_id)
-    except BaseException:
-        remove_job_files(settings, job_id)
-        request.app.state.store.finish_admission(job_id, 0)
-        raise
-    return job_document(job)
-
-
 @router.post("/jobs/upload", status_code=202, dependencies=[Depends(same_origin)])
 async def create_upload_job(request: Request,
                             owner_key: str = Depends(owner)) -> dict:
@@ -396,7 +333,7 @@ async def create_upload_job(request: Request,
     settings: Settings = request.app.state.settings
     # Admission runs before parsing/spooling multipart content. Bound the entire
     # streamed body as well as the extracted file, including chunked requests.
-    job_id = reserve_job(request, owner_key, 'upload')
+    job_id = reserve_job(request, owner_key)
     folder = job_dir(settings, job_id)
     media_path = folder / "source.mp4"
     form = None
@@ -444,7 +381,7 @@ async def create_upload_job(request: Request,
             raise ApiError(400, "video_too_long",
                            f"Videos must be {settings.max_upload_seconds:g} seconds or shorter.")
         request.app.state.store.resize_admission(job_id, size + settings.result_reserve_bytes)
-        job = new_job(request, owner_key, "upload", media_path, job_id=job_id)
+        job = new_job(request, owner_key, media_path, job_id=job_id)
     except BaseException:
         remove_job_files(settings, job_id)
         request.app.state.store.finish_admission(job_id, 0)

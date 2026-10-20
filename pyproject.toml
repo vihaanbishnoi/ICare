@@ -8,6 +8,9 @@ version = "0.1.0"
 description = "Local camera and recorded-video fall detection research baseline"
 requires-python = ">=3.11"
 
+[project.optional-dependencies]
+evaluation = ["matplotlib>=3.8,<4"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["icare*"]

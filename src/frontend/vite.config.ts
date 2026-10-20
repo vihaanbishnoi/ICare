@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
-    // Production proxy serves src/frontend/dist from the same origin as /api/v1.
+    // Separate outputs for the local app and GitHub Pages preview.
     outDir: mode === 'static' ? 'dist-static' : 'dist',
   },
 }))
