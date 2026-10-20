@@ -12,8 +12,10 @@ const MODES: { id: Mode; label: string }[] = [
 export function Brand() {
   return <div className="brand">
     <svg className="brand__mark" viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="7" />
-      <path d="M5 18h5l2.5-6 4 11 3-8 1.5 3H27" />
+      <rect width="32" height="32" rx="8" />
+      <path className="brand__ground" d="M5.5 28h21" />
+      <path className="brand__figure" d="M14 21l6-8.5M14 21l-7-5M14 21l3.5 6M20 12.5l6 3M20 12.5l-5.5-2" />
+      <circle cx="23" cy="8.2" r="3.2" />
     </svg>
     <span className="brand__name">ICare</span>
     <span className="brand__tag">Research prototype</span>

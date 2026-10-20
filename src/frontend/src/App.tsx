@@ -22,9 +22,11 @@ function LocalDashboard() {
   }
   return <>
     <header className="topbar">
-      <Brand />
-      <ModeTabs mode={mode} onChange={choose} prefix="local" label="Detection mode" />
-      <ThemeToggle />
+      <div className="topbar__inner">
+        <Brand />
+        <ModeTabs mode={mode} onChange={choose} prefix="local" label="Detection mode" />
+        <ThemeToggle />
+      </div>
     </header>
     <main className="page">
       <section role="tabpanel" id="local-panel-live" aria-labelledby="local-tab-live" hidden={mode !== 'live'}>

@@ -1,14 +1,18 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { fileURLToPath } from 'node:url'
-import { validatePublicAssets } from './build/publicAssets.ts'
+import { hasDemoVideo, validatePublicAssets } from './build/publicAssets.ts'
+
+const publicDir = fileURLToPath(new URL('./public', import.meta.url))
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
   base: mode === 'static' ? '/ICare/' : '/',
+  // The public site shows public/demo.mp4 when it exists, otherwise a placeholder.
+  define: { __DEMO_VIDEO__: JSON.stringify(mode === 'static' && hasDemoVideo(publicDir)) },
   plugins: [react(), ...(mode === 'static' ? [{
     name: 'approved-public-assets',
-    buildStart() { validatePublicAssets(fileURLToPath(new URL('./public', import.meta.url))) },
+    buildStart() { validatePublicAssets(publicDir) },
   }] : [])],
   server: mode === 'static' ? {} : {
     // During development: proxy /api/v1 → backend so relative URLs work
