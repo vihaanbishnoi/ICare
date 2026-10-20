@@ -1,139 +1,60 @@
-/**
- * ConfidenceChart — SVG timeline built from real predictions[].
- * No invented values. Falls back to empty state when no predictions yet.
- */
-import type { Incident, Prediction } from '../types';
+/** Fall-probability trace from real predictions; an empty state when there are none. */
+import type { Prediction } from '../types';
 
 interface Props {
   predictions: Prediction[];
-  incidents: Incident[];
+  /** Times of recorded incidents, in the same timeline as the predictions. */
+  incidentTimes: number[];
   durationSeconds: number;
-  currentTime?: number;  // for live playhead sync (optional)
+  /** Left edge of the time axis; recorded video starts at 0. */
+  startSeconds?: number;
+  currentTime?: number;
+  emptyText: string;
 }
 
-const W = 600, H = 160;
-const PAD_L = 32, PAD_R = 12, PAD_T = 14, PAD_B = 28;
+const W = 640, H = 200;
+const PAD_L = 36, PAD_R = 12, PAD_T = 12, PAD_B = 26;
 const CW = W - PAD_L - PAD_R;
 const CH = H - PAD_T - PAD_B;
+const THRESHOLD = 0.5;
 
-function toX(t: number, dur: number) { return PAD_L + (t / dur) * CW; }
-function toY(p: number) { return PAD_T + (1 - p) * CH; }
-function fmtT(s: number) { return `${Math.floor(s)}s`; }
+const toY = (p: number) => PAD_T + (1 - p) * CH;
 
-export function ConfidenceChart({ predictions, incidents, durationSeconds, currentTime }: Props) {
+export function ConfidenceChart({ predictions, incidentTimes, durationSeconds, startSeconds = 0, currentTime, emptyText }: Props) {
   if (!predictions.length || durationSeconds <= 0) {
-    return (
-      <div className="chart-empty" aria-label="No prediction data yet">
-        <span className="chart-empty__icon">📊</span>
-        <span>Predictions will appear here when inference is complete.</span>
-      </div>
-    );
+    return <div className="trace trace--empty"><p>{emptyText}</p></div>;
   }
 
-  const dur = durationSeconds;
-  const pts = predictions.map(p => ({ x: toX(p.timestamp_seconds, dur), y: toY(p.fall_probability), p: p.fall_probability }));
-  const lineD = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(' ');
-  const areaD = lineD + ` L${pts[pts.length - 1].x.toFixed(1)},${toY(0)} L${PAD_L},${toY(0)} Z`;
+  const start = startSeconds;
+  const end = Math.max(durationSeconds, start + 1);
+  const toX = (t: number) => PAD_L + ((t - start) / (end - start)) * CW;
+  const line = predictions.map((p, i) => `${i ? 'L' : 'M'}${toX(p.timestamp_seconds).toFixed(1)},${toY(p.fall_probability).toFixed(1)}`).join(' ');
+  const area = `${line} L${toX(predictions.at(-1)!.timestamp_seconds).toFixed(1)},${toY(0)} L${toX(predictions[0].timestamp_seconds).toFixed(1)},${toY(0)} Z`;
+  const tickCount = Math.max(1, Math.min(8, Math.floor(end - start)));
+  const ticks = Array.from({ length: tickCount + 1 }, (_, i) => start + (i / tickCount) * (end - start));
+  const playhead = currentTime !== undefined ? toX(Math.min(Math.max(currentTime, start), end)) : null;
 
-  // Tick labels along X axis
-  const tickCount = Math.min(8, Math.ceil(dur));
-  const ticks: number[] = [];
-  for (let i = 0; i <= tickCount; i++) ticks.push((i / tickCount) * dur);
-
-  const playheadX = currentTime !== undefined ? toX(Math.min(currentTime, dur), dur) : null;
-
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="xMidYMid meet"
-      role="img"
-      aria-label="Fall probability over time"
-      className="confidence-chart"
-      style={{ width: '100%', height: 'auto' }}
-    >
-      <defs>
-        <linearGradient id="grad-safe" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#3fb950" stopOpacity="0.28" />
-          <stop offset="100%" stopColor="#3fb950" stopOpacity="0.02" />
-        </linearGradient>
-        <linearGradient id="grad-danger" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#f85149" stopOpacity="0.36" />
-          <stop offset="100%" stopColor="#f85149" stopOpacity="0.03" />
-        </linearGradient>
-        <clipPath id="clip-above">
-          <rect x={PAD_L} y={PAD_T} width={CW} height={toY(0.5) - PAD_T} />
-        </clipPath>
-        <clipPath id="clip-below">
-          <rect x={PAD_L} y={toY(0.5)} width={CW} height={CH - (toY(0.5) - PAD_T)} />
-        </clipPath>
-      </defs>
-
-      {/* Grid lines */}
-      {[0, 0.25, 0.5, 0.75, 1.0].map(v => (
-        <g key={v}>
-          <line
-            x1={PAD_L} y1={toY(v)} x2={PAD_L + CW} y2={toY(v)}
-            stroke={v === 0.5 ? 'rgba(248,81,73,0.35)' : 'rgba(139,148,158,0.08)'}
-            strokeWidth={v === 0.5 ? 1.5 : 1}
-            strokeDasharray={v === 0.5 ? '4,3' : undefined}
-          />
-          <text x={PAD_L - 4} y={toY(v) + 4} textAnchor="end" fill="rgba(139,148,158,0.5)" fontSize={9} fontFamily="'JetBrains Mono',monospace">
-            {v.toFixed(2)}
-          </text>
-        </g>
-      ))}
-
-      {/* Area fills */}
-      <path d={areaD} fill="url(#grad-safe)" clipPath="url(#clip-below)" />
-      <path d={areaD} fill="url(#grad-danger)" clipPath="url(#clip-above)" />
-
-      {/* Line */}
-      <path d={lineD} fill="none" stroke="#58a6ff" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-
-      {/* Dots */}
-      {predictions.map((pred, i) => (
-        <circle
-          key={i}
-          cx={toX(pred.timestamp_seconds, dur).toFixed(1)}
-          cy={toY(pred.fall_probability).toFixed(1)}
-          r={3.5}
-          fill={pred.fall_probability >= 0.5 ? '#f87171' : '#34d399'}
-          stroke="rgba(7,12,22,0.6)"
-          strokeWidth={1.5}
-        />
-      ))}
-
-      {/* Incident markers */}
-      {incidents.map(inc => {
-        const x = toX(inc.detected_at_seconds, dur);
-        return (
-          <g key={inc.incident_id}>
-            <line x1={x} y1={PAD_T} x2={x} y2={PAD_T + CH} stroke="rgba(248,113,113,0.5)" strokeWidth={1.5} strokeDasharray="4,3" />
-            <polygon points={`${x},${PAD_T} ${x - 5},${PAD_T + 10} ${x + 5},${PAD_T + 10}`} fill="#f87171" />
-            <text x={x + 6} y={PAD_T + 11} fill="#f87171" fontSize={9} fontFamily="'JetBrains Mono',monospace">FALL</text>
-          </g>
-        );
-      })}
-
-      {/* Threshold label */}
-      <text x={PAD_L + CW - 2} y={toY(0.5) - 4} textAnchor="end" fill="rgba(248,113,113,0.6)" fontSize={9} fontFamily="'JetBrains Mono',monospace">
-        threshold 0.50
-      </text>
-
-      {/* Playhead */}
-      {playheadX !== null && (
-        <line
-          x1={playheadX} y1={PAD_T} x2={playheadX} y2={PAD_T + CH}
-          stroke="rgba(34,211,238,0.7)" strokeWidth={1.5}
-        />
-      )}
-
-      {/* X axis ticks */}
-      {ticks.map(t => (
-        <text key={t} x={toX(t, dur)} y={H - 4} textAnchor="middle" fill="rgba(139,148,158,0.5)" fontSize={9} fontFamily="'JetBrains Mono',monospace">
-          {fmtT(t)}
-        </text>
-      ))}
+  return <div className="trace">
+    <svg viewBox={`0 0 ${W} ${H}`} role="img"
+      aria-label={`Fall probability over time: ${predictions.length} predictions, peak ${(Math.max(...predictions.map(p => p.fall_probability)) * 100).toFixed(1)}%, ${incidentTimes.length} incidents`}>
+      <rect className="trace__alert-zone" x={PAD_L} y={toY(1)} width={CW} height={toY(THRESHOLD) - toY(1)} />
+      {[0, 0.25, 0.75, 1].map(v => <g key={v}>
+        <line className="trace__grid" x1={PAD_L} x2={PAD_L + CW} y1={toY(v)} y2={toY(v)} />
+        <text className="trace__axis" x={PAD_L - 6} y={toY(v) + 4} textAnchor="end">{v.toFixed(2)}</text>
+      </g>)}
+      <line className="trace__threshold" x1={PAD_L} x2={PAD_L + CW} y1={toY(THRESHOLD)} y2={toY(THRESHOLD)} />
+      <text className="trace__axis trace__axis--threshold" x={PAD_L - 6} y={toY(THRESHOLD) + 4} textAnchor="end">0.50</text>
+      <path className="trace__area" d={area} />
+      <path className="trace__line" d={line} />
+      {predictions.map((p, i) => <circle key={i} r={2.6}
+        className={p.fall_probability >= THRESHOLD ? 'trace__point trace__point--alert' : 'trace__point'}
+        cx={toX(p.timestamp_seconds)} cy={toY(p.fall_probability)} />)}
+      {incidentTimes.filter(t => t >= start).map((t, i) => <g key={i}>
+        <line className="trace__incident" x1={toX(t)} x2={toX(t)} y1={PAD_T} y2={PAD_T + CH} />
+        <text className="trace__incident-label" x={toX(t) + 5} y={PAD_T + 11}>Fall</text>
+      </g>)}
+      {playhead !== null && <line className="trace__playhead" x1={playhead} x2={playhead} y1={PAD_T} y2={PAD_T + CH} />}
+      {ticks.map(t => <text key={t} className="trace__axis" x={toX(t)} y={H - 6} textAnchor="middle">{`${Math.round(t)} s`}</text>)}
     </svg>
-  );
+  </div>;
 }

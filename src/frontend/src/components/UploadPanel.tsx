@@ -1,26 +1,14 @@
-/**
- * UploadPanel — real multipart upload to /api/v1/jobs/upload, job polling,
- * then video player + results. No Math.random(). No fake progress.
- */
-import { useCallback, useRef, useState } from 'react';
+/** Multipart upload to /api/v1/jobs/upload, job polling, then playback and results. */
+import { useCallback, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { startUploadJob } from '../api/client';
-import type { Job } from '../types';
 import { useJobPoller } from '../hooks/useJobPoller';
+import { ConfidenceChart } from './ConfidenceChart';
+import { ResultsSide } from './ResultsPanel';
 import { VideoPlayer } from './VideoPlayer';
-import { ResultsPanel } from './ResultsPanel';
 
 type Phase = 'idle' | 'uploading' | 'polling' | 'complete' | 'error';
 
-function JobBadge({ state }: { state: Job['state'] }) {
-  const cls: Record<string, string> = {
-    queued: 'job-badge job-badge--queued',
-    running: 'job-badge job-badge--running',
-    completed: 'job-badge job-badge--completed',
-    failed: 'job-badge job-badge--failed',
-    cancelled: 'job-badge job-badge--failed',
-  };
-  return <span className={cls[state] ?? 'job-badge'}>{state}</span>;
-}
+const MAX_MB = 50;
 
 export function UploadPanel() {
   const [localPhase, setPhase] = useState<Phase>('idle');
@@ -31,226 +19,153 @@ export function UploadPanel() {
   const [videoTime, setVideoTime] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { job, result, error, retryable: retryStatus, retry, cancel, cancelling } = useJobPoller(jobId);
+  const { job, result, error, retryable, retry, cancel, cancelling } = useJobPoller(jobId);
   const phase: Phase = jobId ? (result ? 'complete' : error ? 'error' : 'polling') : localPhase;
   const errorMsg = error ?? localError;
 
   const handleFile = useCallback(async (file: File) => {
-    // Client-side validation (server also validates)
+    // The server validates content too; this only catches obvious mistakes early.
     if (!file.type.includes('mp4') && !file.name.toLowerCase().endsWith('.mp4')) {
-      setErrorMsg('Only MP4 files are accepted.');
+      setErrorMsg('Only MP4 files can be analyzed. Choose an .mp4 video.');
       setPhase('error');
       return;
     }
-    if (file.size > 50 * 1024 * 1024) {
-      setErrorMsg(`File too large: ${(file.size / 1024 / 1024).toFixed(1)} MB. Maximum is 50 MB.`);
+    if (file.size > MAX_MB * 1024 * 1024) {
+      setErrorMsg(`This file is ${(file.size / 1024 / 1024).toFixed(1)} MB. Videos must be ${MAX_MB} MB or smaller.`);
       setPhase('error');
       return;
     }
-
     setFileName(file.name);
     setJobId(null);
     setPhase('uploading');
     setErrorMsg(null);
     setVideoTime(0);
-
     try {
-      const j = await startUploadJob(file);
-      setJobId(j.job_id);
+      const created = await startUploadJob(file);
+      setJobId(created.job_id);
       setPhase('polling');
     } catch (e: unknown) {
       const err = e as { status?: number; message?: string; code?: string };
       if (err.status === 503 && err.code === 'model_unavailable') {
-        setErrorMsg('The inference model is not ready. The backend may still be starting.');
+        setErrorMsg('The models are not ready yet. Wait for the API to finish starting, then try again.');
       } else if (err.status === 413 || err.code === 'file_too_large') {
-        setErrorMsg('File rejected by server: too large (max 50 MB).');
+        setErrorMsg(`The server rejected the file: videos must be ${MAX_MB} MB or smaller.`);
       } else if (err.status === 400 || err.code === 'invalid_video') {
-        setErrorMsg(`Invalid video: ${err.message ?? 'Content could not be validated.'}`);
+        setErrorMsg(err.message ?? 'The video could not be validated.');
       } else if (err.status === 429) {
-        setErrorMsg('The demo is busy. Please try again shortly.');
+        setErrorMsg('Another analysis is using the model. Try again when it finishes.');
       } else {
-        setErrorMsg(err.message ?? 'Upload failed.');
+        setErrorMsg(err.message ?? 'The upload failed. Check that the API is running.');
       }
       setPhase('error');
     }
   }, []);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleFile(file);
-  };
+  function onInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) void handleFile(file);
+  }
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
+  function onDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleFile(file);
-  };
+    const file = event.dataTransfer.files?.[0];
+    if (file) void handleFile(file);
+  }
 
-  const handleReset = () => {
+  function reset() {
     setJobId(null);
     setErrorMsg(null);
     setFileName('');
     setVideoTime(0);
     setPhase('idle');
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+  }
 
-  return (
-    <div className="upload-layout">
-      <div className="upload-zone-wrapper">
-        {phase === 'idle' && (
-          <div
-            className={`upload-zone${dragOver ? ' drag-over' : ''}`}
-            id="upload-zone"
-            role="region"
-            aria-label="File upload drop zone"
-            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
-          >
-            <div className="upload-zone__icon" aria-hidden="true">
-              <svg viewBox="0 0 64 64" fill="none">
-                <circle cx="32" cy="32" r="30" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" />
-                <path d="M32 44V28M24 36l8-8 8 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <h3 className="upload-zone__title">Drop your video here</h3>
-            <p className="upload-zone__subtitle">or click to browse files</p>
-            <button
-              className="btn btn--primary btn--sm"
-              id="upload-browse-btn"
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Choose File
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              accept="video/mp4"
-              style={{ display: 'none' }}
-              aria-hidden="true"
-              onChange={handleInputChange}
-            />
+  const choose = () => fileInputRef.current?.click();
+  const progress = job?.progress ?? null;
+  const status = phase === 'idle' ? 'Ready for a video'
+    : phase === 'uploading' ? 'Uploading'
+    : phase === 'polling' ? (job?.state === 'running' ? 'Analyzing' : 'Queued')
+    : phase === 'complete' ? 'Analysis complete' : 'Analysis stopped';
+
+  return <div className="mode">
+    <div className="controlbar">
+      <div className="controlbar__status">
+        <span className="signal" data-state={phase === 'polling' || phase === 'uploading' ? 'on' : phase === 'error' ? 'alert' : 'off'} aria-hidden="true" />
+        <div>
+          <strong role="status">{status}</strong>
+          <p>{fileName || `MP4 up to ${MAX_MB} MB and 60 seconds, analyzed on this computer.`}</p>
+        </div>
+      </div>
+      <div className="controlbar__actions">
+        {phase === 'idle' && <button type="button" className="button button--primary" onClick={choose}>Choose MP4 file</button>}
+        {(phase === 'uploading' || phase === 'polling') && <button type="button" className="button" onClick={() => void cancel()}
+          disabled={phase === 'uploading' || cancelling}>{cancelling ? 'Cancelling' : 'Cancel analysis'}</button>}
+        {(phase === 'complete' || phase === 'error') && <button type="button" className="button button--primary" onClick={reset}>Analyze another video</button>}
+      </div>
+      <input type="file" ref={fileInputRef} accept="video/mp4" hidden onChange={onInputChange} />
+    </div>
+
+    <div className="workspace">
+      <div className="workspace__main">
+        {phase === 'idle' && <div className="stage stage--drop" data-over={dragOver ? 'true' : undefined}
+          onDragOver={event => { event.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={onDrop}>
+          <div className="stage__empty">
+            <p>Drop an MP4 here</p>
+            <span>or use Choose MP4 file. The video plays back here with its skeleton overlay.</span>
           </div>
-        )}
+        </div>}
 
-        {phase === 'uploading' && (
-          <div className="job-card" id="upload-job-card">
-            <div className="job-card__header">
-              <span className="job-card__name" id="upload-filename">{fileName}</span>
-              <span className="job-badge job-badge--running">uploading</span>
+        {(phase === 'uploading' || phase === 'polling') && <div className="stage">
+          <div className="stage__empty">
+            <p>{phase === 'uploading' ? 'Uploading the video' : job?.state === 'running' ? 'Running pose and fall inference' : 'Waiting for the model'}</p>
+            <div className="progress" role="progressbar" aria-label="Analysis progress" aria-valuemin={0} aria-valuemax={100}
+              aria-valuenow={progress !== null ? Math.round(progress * 100) : undefined}>
+              <div className="progress__fill" data-indeterminate={progress === null ? 'true' : undefined}
+                style={{ width: progress !== null ? `${Math.round(progress * 100)}%` : undefined }} />
             </div>
-            <p className="job-card__message">Uploading to server…</p>
+            <span className="num">{progress !== null ? `${Math.round(progress * 100)}%` : 'Progress not reported yet'}</span>
           </div>
-        )}
+        </div>}
 
-        {phase === 'polling' && (
-          <div className="job-card" id="upload-job-card">
-            <div className="job-card__header">
-              <span className="job-card__name" id="upload-filename">{fileName}</span>
-              <JobBadge state={job?.state ?? 'queued'} />
-            </div>
-            <div className="job-card__progress">
-              <div className="job-progress-bar">
-                <div
-                  className="job-progress-fill"
-                  style={{
-                    width: job?.progress != null ? `${Math.round(job.progress * 100)}%` : '40%',
-                    transition: 'width 0.4s ease',
-                    // Indeterminate pulse when progress is null
-                    animation: job?.progress == null ? 'progress-pulse 1.5s ease-in-out infinite' : undefined,
-                  }}
-                />
-              </div>
-              <span className="job-card__pct" id="upload-pct">
-                {job?.progress != null ? `${Math.round(job.progress * 100)}%` : '—'}
-              </span>
-            </div>
-            <p className="job-card__message" id="upload-message">
-              {(!job || job.state === 'queued') && 'Queued — waiting for worker…'}
-              {job?.state === 'running' && 'Running inference…'}
-            </p>
+        {phase === 'error' && <div className="stage" role="alert">
+          <div className="stage__empty">
+            <p>{errorMsg}</p>
+            {retryable && jobId && <button type="button" className="button" onClick={retry}>Retry status check</button>}
           </div>
-        )}
+        </div>}
 
-        {phase === 'polling' && (
-          <button className="btn btn--outline btn--sm" onClick={() => void cancel()} disabled={cancelling}>
-            {cancelling ? 'Cancelling…' : 'Cancel Analysis'}
-          </button>
-        )}
-
-        {phase === 'complete' && result && (
-          <div>
-            <VideoPlayer
-              mediaUrl={result.media_url}
-              frameWidth={result.frame_width}
-              frameHeight={result.frame_height}
-              poses={result.poses}
-              predictions={result.predictions}
-              incidents={result.incidents}
-              onTimeChange={setVideoTime}
-            />
-            <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem' }}>
-              <button className="btn btn--outline btn--sm" onClick={handleReset} id="upload-reset-btn">
-                ↺ Upload Another
-              </button>
-            </div>
-          </div>
-        )}
-
-        {phase === 'error' && (
-          <div className="error-state" role="alert">
-            <div className="error-state__icon">⚠</div>
-            <p className="error-state__message">{errorMsg}</p>
-            <button className="btn btn--outline btn--sm" onClick={() => {
-              if (retryStatus && jobId) retry();
-              else handleReset();
-            }} id="upload-error-retry-btn">
-              {retryStatus ? 'Retry Status Check' : 'Try Again'}
-            </button>
-          </div>
-        )}
+        {phase === 'complete' && result && <>
+          <VideoPlayer mediaUrl={result.media_url} frameWidth={result.frame_width} frameHeight={result.frame_height}
+            poses={result.poses} predictions={result.predictions} incidents={result.incidents} onTimeChange={setVideoTime} />
+          <section className="panel" aria-labelledby="video-trace-title">
+            <header className="panel__header"><h2 id="video-trace-title">Fall probability</h2><span>Click play or seek to move the marker</span></header>
+            <ConfidenceChart predictions={result.predictions} incidentTimes={result.incidents.map(item => item.detected_at_seconds)}
+              durationSeconds={result.duration_seconds} currentTime={videoTime}
+              emptyText="No predictions: the video never had six poses spanning two seconds." />
+          </section>
+        </>}
       </div>
 
-      {/* Right column — upload info or results */}
-      {phase === 'complete' && result ? (
-        <ResultsPanel result={result} currentTime={videoTime} />
-      ) : (
-        <div className="upload-info" id="upload-limits">
-          <h3 className="upload-info__title">Upload Requirements</h3>
-          <ul className="upload-limits-list" role="list">
-            <li>
-              <span className="limits-icon" aria-hidden="true">📁</span>
-              <span><strong>Format:</strong> MP4 only (content-validated, not just extension)</span>
-            </li>
-            <li>
-              <span className="limits-icon" aria-hidden="true">📦</span>
-              <span><strong>Size:</strong> Maximum 50 MB</span>
-            </li>
-            <li>
-              <span className="limits-icon" aria-hidden="true">⏱</span>
-              <span><strong>Duration:</strong> Maximum 60 seconds</span>
-            </li>
-            <li>
-              <span className="limits-icon" aria-hidden="true">⚡</span>
-              <span><strong>Concurrency:</strong> 1 active inference job</span>
-            </li>
-            <li>
-              <span className="limits-icon" aria-hidden="true">🕐</span>
-              <span><strong>Retention:</strong> Results deleted after 24 hours</span>
-            </li>
-          </ul>
-          <div className="upload-privacy">
-            <div className="upload-privacy__icon" aria-hidden="true">🔒</div>
-            <div>
-              <strong>No account required.</strong><br />
-              Your upload is private. The server verifies session ownership — random job IDs alone are not authorization.
-            </div>
-          </div>
-        </div>
-      )}
+      <aside className="workspace__side" aria-label={phase === 'complete' ? 'Analysis results' : 'Upload requirements'}>
+        {phase === 'complete' && result ? <ResultsSide result={result} /> : <>
+          <section className="side-block">
+            <h2>Requirements</h2>
+            <dl className="facts">
+              <div><dt>Format</dt><dd>MP4, checked by content</dd></div>
+              <div><dt>Size</dt><dd>Up to {MAX_MB} MB</dd></div>
+              <div><dt>Length</dt><dd>Up to 60 seconds</dd></div>
+              <div><dt>Queue</dt><dd>One analysis at a time</dd></div>
+              <div><dt>Retention</dt><dd>Deleted after 24 hours</dd></div>
+            </dl>
+          </section>
+          <section className="side-block">
+            <h2>Privacy</h2>
+            <p className="hint">No account is needed. Uploads and results belong to this browser session; the server checks ownership on every request.</p>
+          </section>
+        </>}
+      </aside>
     </div>
-  );
+  </div>;
 }

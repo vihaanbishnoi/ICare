@@ -1,5 +1,8 @@
 import type { Pose } from '../types';
 
+/** Canvas text uses the page's numeric face, falling back to the system monospace. */
+export const MONO = '"Atkinson Hyperlegible Mono", ui-monospace, monospace';
+
 // COCO-17 skeleton connections (pairs of keypoint indices)
 const SKELETON: [number, number][] = [
   [0, 1], [0, 2], [1, 3], [2, 4],           // head
@@ -25,7 +28,7 @@ if (pose) {
 
         // "person" label
         ctx.fillStyle = bboxColor;
-        ctx.font = '500 10px "JetBrains Mono", monospace';
+        ctx.font = `500 11px ${MONO}`;
         ctx.fillText('person', x1, Math.max(y1 - 4, 12));
 
         // Skeleton

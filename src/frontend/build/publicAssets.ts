@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 /** A static build fails rather than publishing an unapproved file from public/. */
 export function validatePublicAssets(root: string): void {
-  const allowed = new Set(['favicon.svg', 'icons.svg']);
+  const allowed = new Set(['favicon.svg']);
   function visit(directory: string, prefix = '') {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const name = `${prefix}${entry.name}`;

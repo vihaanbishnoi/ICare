@@ -1,168 +1,59 @@
-/**
- * ResultsPanel — shows ConfidenceChart, incidents, and analysis summary
- * from real Result data. No invented values.
- */
-import { ConfidenceChart } from './ConfidenceChart';
-import type { Incident, Prediction, Result } from '../types';
+/** Result details from real API data; nothing here is computed beyond simple summaries. */
+import type { Result } from '../types';
 
-interface Props {
-  result: Result;
-  currentTime?: number;
+const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
+
+/** The single large reading in a side column. */
+export function Readout({ label, value, note }: { label: string; value: number | null; note: string }) {
+  return <section className="readout" data-alert={value !== null && value >= 0.5 ? 'true' : undefined}>
+    <h2>{label}</h2>
+    <p className="readout__value num">{value === null ? '—' : pct(value)}</p>
+    <p className="hint">{note}</p>
+  </section>;
 }
 
-function fmtSec(s: number) {
-  return `${s.toFixed(2)} s`;
+interface IncidentRow { id: string; when?: string; at: number; confidence: number }
+
+export function IncidentTable({ rows }: { rows: IncidentRow[] }) {
+  const clock = rows.some(row => row.when);
+  return <table className="incidents">
+    <thead><tr>{clock && <th scope="col">Time</th>}<th scope="col">At</th><th scope="col">P(Fall)</th></tr></thead>
+    <tbody>{rows.map(row => <tr key={row.id}>
+      {clock && <td>{row.when}</td>}
+      <td className="num">{row.at.toFixed(2)} s</td>
+      <td className="num">{pct(row.confidence)}</td>
+    </tr>)}</tbody>
+  </table>;
 }
 
-function fmtPct(n: number | null) {
-  if (n === null) return 'n/a';
-  return `${(n * 100).toFixed(1)}%`;
-}
+export function ResultsSide({ result }: { result: Result }) {
+  const peak = result.predictions.length ? Math.max(...result.predictions.map(p => p.fall_probability)) : null;
+  const times = result.predictions.map(p => p.inference_ms).filter((v): v is number => typeof v === 'number');
+  const meanMs = times.length ? times.reduce((a, b) => a + b, 0) / times.length : null;
 
-function fmtMs(n: number | null | undefined) {
-  if (n === null || n === undefined) return 'n/a';
-  return `${n.toFixed(0)} ms`;
-}
-
-function IncidentList({ incidents }: { incidents: Incident[] }) {
-  if (incidents.length === 0) {
-    return (
-      <div className="incidents-empty">
-        <div className="incidents-empty__icon" aria-hidden="true">✓</div>
-        <div className="incidents-empty__text">
-          No falls detected.<br />
-          All predictions below threshold (0.50).
-        </div>
+  return <>
+    <Readout label="Peak P(Fall)" value={peak} note="Highest prediction in this video. Incidents open at 0.50 or above." />
+    <section className="side-block">
+      <h2>{result.incidents.length === 1 ? '1 incident' : `${result.incidents.length} incidents`}</h2>
+      {result.incidents.length === 0
+        ? <p className="hint">No prediction reached the 0.50 threshold.</p>
+        : <IncidentTable rows={result.incidents.map(item => ({ id: item.incident_id, at: item.detected_at_seconds, confidence: item.confidence }))} />}
+    </section>
+    <section className="side-block">
+      <h2>Summary</h2>
+      <dl className="facts">
+        <div><dt>Video length</dt><dd className="num">{result.duration_seconds.toFixed(2)} s</dd></div>
+        <div><dt>Predictions</dt><dd className="num">{result.predictions.length}</dd></div>
+        <div><dt>Mean PoseC3D time</dt><dd className="num">{meanMs === null ? 'Not measured' : `${meanMs.toFixed(0)} ms`}</dd></div>
+      </dl>
+      <p className="provenance">{result.model_version ?? 'Model version not reported'}</p>
+    </section>
+    {(result.reports.json || result.reports.csv) && <section className="side-block">
+      <h2>Reports</h2>
+      <div className="button-row">
+        {result.reports.json && <a className="button button--small" href={result.reports.json} download>Download JSON</a>}
+        {result.reports.csv && <a className="button button--small" href={result.reports.csv} download>Download CSV</a>}
       </div>
-    );
-  }
-  return (
-    <div className="incidents-list">
-      {incidents.map(inc => (
-        <div key={inc.incident_id} className="incident-item incident-item--danger">
-          <div className="incident-icon" aria-hidden="true">⚠</div>
-          <div className="incident-body">
-            <div className="incident-time">
-              Detected at <strong>{fmtSec(inc.detected_at_seconds)}</strong>
-            </div>
-            <div className="incident-conf">
-              Confidence: <strong className="text-danger">{fmtPct(inc.confidence)}</strong>
-            </div>
-            <div className="incident-status">
-              Status: <span className="status-chip status-chip--detected">{inc.status}</span>
-            </div>
-          </div>
-          <div className="incident-label" aria-label="Fall event">FALL</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function peakFallProb(predictions: Prediction[]): number | null {
-  if (!predictions.length) return null;
-  return Math.max(...predictions.map(p => p.fall_probability));
-}
-
-function avgInferenceMs(predictions: Prediction[]): number | null {
-  const times = predictions.map(p => p.inference_ms).filter((v): v is number => v !== null && v !== undefined);
-  if (!times.length) return null;
-  return times.reduce((a, b) => a + b, 0) / times.length;
-}
-
-export function ResultsPanel({ result, currentTime }: Props) {
-  const peak = peakFallProb(result.predictions);
-  const avgMs = avgInferenceMs(result.predictions);
-
-  return (
-    <div className="results-panel">
-      {/* Confidence chart */}
-      <div className="card" id="chart-card">
-        <div className="card__header">
-          <h3 className="card__title">Confidence Timeline</h3>
-          <div className="legend" aria-label="Chart legend">
-            <span className="legend-dot legend-dot--danger" aria-hidden="true" />
-            <span className="legend-label">Fall ≥0.50</span>
-            <span className="legend-dot legend-dot--safe" aria-hidden="true" />
-            <span className="legend-label">Normal</span>
-          </div>
-        </div>
-        <div className="chart-container">
-          <ConfidenceChart
-            predictions={result.predictions}
-            incidents={result.incidents}
-            durationSeconds={result.duration_seconds}
-            currentTime={currentTime}
-          />
-        </div>
-      </div>
-
-      {/* Incident list */}
-      <div className="card" id="incidents-card">
-        <div className="card__header">
-          <h3 className="card__title">Detected Incidents</h3>
-          <span className={`badge ${result.incidents.length ? 'badge--danger' : 'badge--safe'}`}>
-            {result.incidents.length} detected
-          </span>
-        </div>
-        <IncidentList incidents={result.incidents} />
-      </div>
-
-      {/* Summary */}
-      <div className="card" id="summary-card">
-        <div className="card__header">
-          <h3 className="card__title">Analysis Summary</h3>
-        </div>
-        <div className="summary-grid">
-          <div className="summary-item">
-            <span className="summary-label">Duration</span>
-            <span className="summary-value">{fmtSec(result.duration_seconds)}</span>
-          </div>
-          <div className="summary-item">
-            <span className="summary-label">Predictions</span>
-            <span className="summary-value">{result.predictions.length}</span>
-          </div>
-          <div className="summary-item">
-            <span className="summary-label">Peak P(Fall)</span>
-            <span className={`summary-value ${peak !== null && peak >= 0.5 ? 'text-danger' : 'text-safe'}`}>
-              {fmtPct(peak)}
-            </span>
-          </div>
-          <div className="summary-item">
-            <span className="summary-label">Avg Inference</span>
-            <span className="summary-value">{fmtMs(avgMs)}</span>
-          </div>
-          <div className="summary-item">
-            <span className="summary-label">Model</span>
-            <span className="summary-value">{result.model_version ?? 'n/a'}</span>
-          </div>
-          <div className="summary-item">
-            <span className="summary-label">Threshold</span>
-            <span className="summary-value">0.50</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Report downloads */}
-      {Object.keys(result.reports).length > 0 && (
-        <div className="card" id="reports-card">
-          <div className="card__header">
-            <h3 className="card__title">Download Reports</h3>
-          </div>
-          <div className="report-links">
-            {result.reports.json && (
-              <a href={result.reports.json} className="btn btn--outline btn--sm" download>
-                ⬇ JSON Report
-              </a>
-            )}
-            {result.reports.csv && (
-              <a href={result.reports.csv} className="btn btn--outline btn--sm" download>
-                ⬇ CSV Report
-              </a>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    </section>}
+  </>;
 }

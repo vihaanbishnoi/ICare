@@ -3,13 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="ICare — Pose-based fall detection research. Explore the architecture and evaluation status through an interactive interface preview."
-    />
-    <meta name="robots" content="index, follow" />
-    <title>ICare — Pose-Based Fall Detection</title>
+    <meta name="description" content="ICare: pose-based fall detection research. Live camera and recorded-video inference with YOLO26n-pose and PoseC3D." />
+    <meta name="color-scheme" content="light dark" />
+    <title>ICare: pose-based fall detection</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      // Apply a remembered theme before first paint; otherwise CSS follows the system.
+      try {
+        var theme = localStorage.getItem('icare-theme');
+        if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
