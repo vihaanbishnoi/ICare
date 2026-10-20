@@ -3,9 +3,9 @@
  * Source of truth: src/icare/api/schemas.py
  */
 
-export type JobState = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+type JobState = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 
-export interface ErrorDetail {
+interface ErrorDetail {
   code: string;
   message: string;
 }

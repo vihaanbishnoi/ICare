@@ -81,8 +81,10 @@ npm ci
 npm run dev
 ```
 
-Open the Vite URL printed in the terminal and choose **Live Detection** or
-**Analyze Video**. Its proxy keeps browser requests and API cookies on the same
+Open the Vite URL printed in the terminal. The dashboard opens on **Live
+detection**; switch to **Analyze video** in the top bar (the URL keeps the
+selected mode as `#live` or `#video`). Light and dark themes follow the system
+until you choose one with the toggle, which is then remembered. Its proxy keeps browser requests and API cookies on the same
 origin. `/api/v1/health` reports the service, and `/api/v1/ready` reports model
 availability. Stop each server with **Ctrl+C** in its terminal.
 
@@ -90,7 +92,7 @@ MP4 uploads are limited to 50 MB and 60 seconds by default. Both ONNX weights ar
 included in `models/` and validated when the engine starts; inference needs no downloads.
 Jobs run one at a time and private results expire after 24 hours.
 
-Press **Start Live Detection** to request camera permission. Localhost or HTTPS
+Press **Start live detection** to request camera permission. Localhost or HTTPS
 is required. The dashboard shows an uninterrupted camera preview alongside the
 exact analyzed frame and its skeleton, probabilities, deduplicated alerts and
 session history. Camera frames stay in memory; only incident/session metadata
@@ -138,10 +140,11 @@ npm run preview:static
 ```
 
 Open the printed URL under `/ICare/`. This build needs no API, webcam, Python,
-database or model weights. It shows empty video and results placeholders;
-no sample clips, predictions or incidents are bundled. Current pipeline evaluation
+database or model weights. It shows the dashboard layout for
+both modes with empty states, plus how the pipeline works and its evaluation
+status; no sample clips, predictions or incidents are bundled. Current pipeline evaluation
 metrics remain **Not yet evaluated**. It offers no upload or live-inference
-controls. The static build only permits the app icons in `public/` and rejects
+controls. The static build only permits the favicon in `public/` and rejects
 additional files or symlinks.
 
 The Pages job is prepared but disabled unless the repository variable

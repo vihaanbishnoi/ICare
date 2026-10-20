@@ -1,13 +1,11 @@
 /**
- * VideoPlayer — real <video> with a <canvas> overlay for pose keypoints and bounding box.
- * Draws COCO-17 keypoints and bbox_xyxy scaled from frame_width/frame_height to
- * displayed video dimensions. No overlay is drawn when a frame has no matching pose.
+ * Recorded video with a canvas overlay for the nearest sampled pose and the latest
+ * prediction. Poses are scaled from source pixels; no overlay where no pose exists.
  */
 import { useEffect, useRef } from 'react';
 import type { Incident, Pose, Prediction } from '../types';
 import { hasRecordedIncident, poseAtTime, predictionAtTime } from '../lib/playback';
-
-import { drawPose } from '../lib/poseOverlay';
+import { drawPose, MONO } from '../lib/poseOverlay';
 
 interface Props {
   mediaUrl: string;
@@ -55,7 +53,7 @@ export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predicti
         ctx.roundRect(bX - 8, bY - 24, bW + 16, bH + 32, 6);
         ctx.fill();
         ctx.fillStyle = 'rgba(139,148,158,0.6)';
-        ctx.font = '500 10px "JetBrains Mono", monospace';
+        ctx.font = `500 11px ${MONO}`;
         ctx.fillText('P(Fall)', bX, bY - 8);
         ctx.textAlign = 'right';
         ctx.fillText(p.toFixed(2), bX + bW, bY - 8);
@@ -79,7 +77,7 @@ export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predicti
         ctx.lineTo(bX + bW * 0.5, bY + bH + 2);
         ctx.stroke();
         ctx.fillStyle = 'rgba(139,148,158,0.4)';
-        ctx.font = '400 8px "JetBrains Mono", monospace';
+        ctx.font = `400 9px ${MONO}`;
         ctx.textAlign = 'center';
         ctx.fillText('0.5', bX + bW * 0.5, bY + bH + 12);
         ctx.textAlign = 'left';
@@ -108,32 +106,14 @@ export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predicti
     };
   }, [mediaUrl, frameWidth, frameHeight, poses, predictions, incidents]);
 
-  return (
-    <div className="video-wrapper" style={{ position: 'relative' }}>
-      <video
-        ref={videoRef}
-        className="video-player"
-        src={mediaUrl}
-        controls
-        playsInline
+  return <figure className="stage">
+    <div className="stage__frame">
+      <video ref={videoRef} className="stage__media" src={mediaUrl} controls playsInline
         onTimeUpdate={event => onTimeChange?.(event.currentTarget.currentTime)}
         onSeeked={event => onTimeChange?.(event.currentTarget.currentTime)}
-        onLoadedMetadata={event => onTimeChange?.(event.currentTarget.currentTime)}
-        style={{ width: '100%', display: 'block', borderRadius: '8px' }}
-      />
-      <canvas
-        ref={canvasRef}
-        className="video-canvas-overlay"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          pointerEvents: 'none',
-          borderRadius: '8px',
-        }}
-      />
+        onLoadedMetadata={event => onTimeChange?.(event.currentTarget.currentTime)} />
+      <canvas ref={canvasRef} className="stage__overlay" aria-hidden="true" />
     </div>
-  );
+    <figcaption className="stage__caption"><span>Your video with the analyzed skeleton</span></figcaption>
+  </figure>;
 }
