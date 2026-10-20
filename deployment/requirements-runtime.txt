@@ -2,12 +2,8 @@
 # Resolved in a clean python:3.11-slim image; regenerate the same way when a
 # version changes and record the reason in the PR.
 #
-# One OpenCV package only. rtmlib's metadata lists both opencv-python and
-# opencv-contrib-python, and installing both lets one silently overwrite the
-# other's cv2/. The engine and rtmlib's YOLOX/RTMPose path use only core cv2
-# (VideoCapture, resize, cvtColor, warpAffine, dnn), which the headless build
-# provides. rtmlib is therefore installed separately with --no-deps:
-# see rtmlib.txt and deployment/Dockerfile.api.
+# YOLO26n-pose and PoseC3D both use ONNX Runtime. Only one headless OpenCV
+# distribution is needed; PyTorch, Ultralytics and RTMLib are not runtime deps.
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1

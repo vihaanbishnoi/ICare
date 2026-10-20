@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, FiniteFloat
 
-# Keep finite raw RTMPose scores; only fall_probability is a probability.
+# Preserve finite source-model joint scores; they are not fall probabilities.
 KeypointScore = FiniteFloat
 
 
@@ -89,3 +89,48 @@ class Result(BaseModel):
     incidents: list[Incident]
     metrics: dict[str, FiniteFloat | int | None]
     reports: dict[str, str]
+
+
+class LiveSession(BaseModel):
+    session_id: str
+    created_at_utc: str
+    model_version: str
+
+
+class LiveIncident(BaseModel):
+    incident_id: str
+    session_id: str
+    detected_at_seconds: FiniteFloat = Field(ge=0)
+    confidence: FiniteFloat = Field(ge=0, le=1)
+    created_at_utc: str
+
+
+class LiveFrame(BaseModel):
+    session_id: str
+    model_version: str
+    timestamp_seconds: FiniteFloat = Field(ge=0)
+    frame_width: int = Field(gt=0)
+    frame_height: int = Field(gt=0)
+    pose: Pose | None
+    prediction: Prediction | None
+    status: Literal['no_person', 'warming_up', 'monitoring']
+    coverage_seconds: FiniteFloat = Field(ge=0)
+    pose_count: int = Field(ge=0)
+    track_resets: int = Field(ge=0)
+    frames_processed: int = Field(ge=0)
+    processed_fps: FiniteFloat = Field(ge=0)
+    processing_ms: FiniteFloat = Field(ge=0)
+    incident: LiveIncident | None
+    incident_latched: bool
+
+
+class LiveHistory(LiveSession):
+    state: Literal['active', 'stopped', 'failed']
+    frames_processed: int = Field(ge=0)
+    ended_at_utc: str | None
+    error_message: str | None
+    incidents: list[LiveIncident]
+
+
+class LiveHistoryResponse(BaseModel):
+    sessions: list[LiveHistory]

@@ -1,6 +1,6 @@
 """Deterministic offline fall-analysis engine (inference contract v1).
 
-Importing this module loads no model and touches no network: onnxruntime, rtmlib
+Importing this module loads no model and touches no network: onnxruntime
 and psutil are imported only inside ``load_engine`` and the helpers it calls.
 The API adapter implements the same callbacks without importing HTTP code.
 """
@@ -17,7 +17,7 @@ from typing import Any, Callable, Iterator, Mapping, Protocol
 
 import numpy as np
 
-from icare.inference.pose import PoseFrame
+from icare.inference.pose import DEFAULT_POSE_MODEL, PoseFrame
 from icare.inference.pose_signals import PoseSignalEstimator
 from icare.inference.posec3d_bridge import PoseSequenceBuffer
 
@@ -79,6 +79,7 @@ class EngineConfig:
     """Validated settings for source sampling and temporal inference."""
 
     model_path: Path
+    pose_model_path: Path = DEFAULT_POSE_MODEL
     metadata_path: Path | None = None
     device: str = "cpu"
     sample_fps: float = 6.0
@@ -87,9 +88,6 @@ class EngineConfig:
     # A person missing for longer than this ends the track: the temporal window
     # restarts instead of interpolating a pose across the absence. None disables.
     max_pose_gap_seconds: float | None = 1.0
-    # Offline clips already sample sparsely (6/s), so a reused detector box would
-    # be stale for >= 0.33 s. Detect on every sampled frame by default.
-    detection_frequency: int = 1
 
     def __post_init__(self) -> None:
         if not (math.isfinite(self.sample_fps) and self.sample_fps > 0):
@@ -98,8 +96,6 @@ class EngineConfig:
             raise ValueError("inference_width must be at least 64 pixels")
         if self.prediction_interval_seconds < 0:
             raise ValueError("prediction_interval_seconds must not be negative")
-        if self.detection_frequency < 1:
-            raise ValueError("detection_frequency must be at least 1")
 
     @classmethod
     def from_mapping(cls, config: Mapping[str, Any]) -> "EngineConfig":
@@ -113,7 +109,7 @@ class EngineConfig:
         values = dict(config)
         known = {
             "model_path", "metadata_path", "device", "sample_fps", "inference_width",
-            "prediction_interval_seconds", "max_pose_gap_seconds", "detection_frequency",
+            "prediction_interval_seconds", "max_pose_gap_seconds", "pose_model_path",
         }
         unknown = sorted(set(values) - known)
         if unknown:
@@ -121,6 +117,8 @@ class EngineConfig:
         if "model_path" not in values:
             raise ValueError("model_path is required")
         values["model_path"] = Path(values["model_path"])
+        if "pose_model_path" in values:
+            values["pose_model_path"] = Path(values["pose_model_path"])
         if values.get("metadata_path") is not None:
             values["metadata_path"] = Path(values["metadata_path"])
         if "inference_width" not in values and os.environ.get("ICARE_INFERENCE_WIDTH"):
@@ -132,7 +130,7 @@ class EngineConfig:
 
 
 class PoseExtractor(Protocol):
-    """Per-clip pose source. ``fork`` returns an independent per-job session."""
+    """Pose source. ``fork`` returns a clip-safe source with no stale tracking state."""
 
     def fork(self) -> "PoseExtractor": ...
 
@@ -279,7 +277,10 @@ class PoseC3DEngine:
         info: Mapping[str, Any] | None = None,
     ) -> None:
         self.config = config
-        self.model_version: str | None = classifier.model_version
+        pose_version = getattr(extractor, "model_version", None)
+        self.model_version: str | None = (
+            f"{classifier.model_version}+{pose_version}" if pose_version else classifier.model_version
+        )
         self._extractor: PoseExtractor | None = extractor
         self._classifier: TemporalClassifier | None = classifier
         self._buffer_settings = {
@@ -307,7 +308,7 @@ class PoseC3DEngine:
             "inference_width": self.config.inference_width,
             "prediction_interval_seconds": self.config.prediction_interval_seconds,
             "max_pose_gap_seconds": self.config.max_pose_gap_seconds,
-            "detection_frequency": self.config.detection_frequency,
+            "pose_architecture": "YOLO26n-pose",
             **{key: value for key, value in self._buffer_settings.items()},
         }
 
@@ -365,143 +366,157 @@ class PoseC3DEngine:
         if cancel.is_set():
             raise AnalysisCancelled("The analysis was cancelled.")
 
-    def _analyze(
-        self,
-        path: Path,
-        on_pose: PoseCallback,
-        on_prediction: PredictionCallback,
-        on_progress: ProgressCallback,
-        cancel: threading.Event,
-    ) -> dict[str, Any]:
-        config = self.config
-        assert self._extractor is not None and self._classifier is not None
-        classifier = self._classifier
+    def start_stream(self) -> "FrameSession":
+        """Reserve the model for a fresh camera session until close()."""
+        if not self._job_lock.acquire(blocking=False):
+            raise ModelRuntimeError("The model is already processing another source.")
+        try:
+            self._check_live(threading.Event())
+            return FrameSession(self, release=self._job_lock.release)
+        except BaseException:
+            self._job_lock.release()
+            raise
+
+    def _analyze(self, path, on_pose, on_prediction, on_progress, cancel):
         if not path.is_file():
             raise InvalidVideoError("The video file does not exist.")
         started = perf_counter()
-        source = OpenCvFrameSource(path, config.sample_fps)
+        source = OpenCvFrameSource(path, self.config.sample_fps)
+        session = FrameSession(self)
         try:
-            session = self._extractor.fork()
-            buffer = PoseSequenceBuffer(**self._buffer_settings)
-            signals_estimator = PoseSignalEstimator()
-            resources = ResourceSampler()
-
-            frame_size: tuple[int, int] | None = None  # (width, height) of source frames
-            sampled = poses_emitted = predictions_emitted = track_resets = 0
-            pose_ms_total = 0.0
-            last_pose_t: float | None = None
-            last_prediction_t = float("-inf")
-            latest_signals = None
-            frames_total = source.frame_count_reported
-
-            def predict() -> None:
-                nonlocal predictions_emitted, last_prediction_t
-                model_input = buffer.build()
-                if model_input is None:
-                    return
-                call_started = perf_counter()
-                try:
-                    probability = classifier.predict(model_input.tensor)
-                except EngineError:
-                    raise
-                except Exception as exc:  # noqa: BLE001 - any model failure is reported, not hidden
-                    raise ModelRuntimeError(
-                        f"PoseC3D inference failed: {type(exc).__name__}: {exc}"
-                    ) from exc
-                inference_ms = (perf_counter() - call_started) * 1000.0
-                probability = _checked_probability(probability)
-                resources.sample()
-                record = {
-                    "timestamp_seconds": _seconds(model_input.end_seconds),
-                    "fall_probability": probability,
-                    "window_start_seconds": _seconds(model_input.start_seconds),
-                    "source_pose_count": int(model_input.source_pose_count),
-                    "inference_ms": round(inference_ms, 3),
-                    "urgency": _optional(latest_signals, "urgency"),
-                    "reliability": _optional(latest_signals, "reliability"),
-                }
-                predictions_emitted += 1
-                last_prediction_t = float(model_input.end_seconds)
-                on_prediction(record)
-
             on_progress(0.0)
             for item in source.samples():
                 self._check_live(cancel)
-                height, width = item.frame_rgb.shape[:2]
-                if frame_size is None:
-                    frame_size = (width, height)
-                elif frame_size != (width, height):
-                    raise InvalidVideoError("The video changes resolution part-way through.")
-                sampled += 1
-
-                inference_frame = _resize_for_inference(item.frame_rgb, config.inference_width)
-                scale_x = width / inference_frame.shape[1]
-                scale_y = height / inference_frame.shape[0]
-                try:
-                    found = session.extract(inference_frame, item.timestamp_seconds)
-                except EngineError:
-                    raise
-                except Exception as exc:  # noqa: BLE001
-                    raise ModelRuntimeError(
-                        f"Pose estimation failed: {type(exc).__name__}: {exc}"
-                    ) from exc
-
-                if found is not None:
-                    pose = _to_source_coordinates(found, scale_x, scale_y, width, height)
-                    t = pose.timestamp_seconds
-                    if (
-                        last_pose_t is not None
-                        and config.max_pose_gap_seconds is not None
-                        and t - last_pose_t > config.max_pose_gap_seconds
-                    ):
-                        buffer.clear()
-                        signals_estimator.reset()
-                        track_resets += 1
-                    last_pose_t = t
-                    latest_signals = signals_estimator.update(pose)
-                    buffer.append(pose)
-                    poses_emitted += 1
-                    pose_ms_total += float(found.inference_ms)
-                    on_pose(_pose_record(pose))
-                    if buffer.ready and t - last_prediction_t >= config.prediction_interval_seconds:
-                        predict()
-
-                if frames_total:
-                    on_progress(min((item.index + 1) / frames_total, 0.99))
-                else:
-                    on_progress(None)
-
+                record = session.process_frame(item.frame_rgb, item.timestamp_seconds)
+                if record["pose"] is not None:
+                    on_pose(record["pose"])
+                if record["prediction"] is not None:
+                    on_prediction(record["prediction"])
+                total = source.frame_count_reported
+                on_progress(min((item.index + 1) / total, 0.99) if total else None)
             self._check_live(cancel)
-            if source.frames_decoded == 0 or frame_size is None:
+            if source.frames_decoded == 0 or session.frame_size is None:
                 raise InvalidVideoError("No frame of the video could be decoded.")
-
-            # Drain: the window ending at the last pose must be classified even if
-            # the interval since the previous prediction has not elapsed.
-            if buffer.ready and last_pose_t is not None and last_pose_t > last_prediction_t:
-                predict()
-
-            if poses_emitted == 0:
+            final = session.finish()
+            if final is not None:
+                on_prediction(final)
+            if session.poses_emitted == 0:
                 raise NoPersonError("No person was detected in the sampled frames.")
-            if predictions_emitted == 0:
+            if session.predictions_emitted == 0:
                 raise InsufficientCoverageError(
-                    f"{poses_emitted} pose(s) found, but the model needs at least "
-                    f"{buffer.minimum_poses} poses spanning {buffer.minimum_coverage_seconds:g} s "
-                    "of one continuous track."
-                )
-
-            wall = perf_counter() - started
-            width, height = frame_size
+                    f"{session.poses_emitted} pose(s) found, but the model needs at least "
+                    f"{session.buffer.minimum_poses} poses spanning {session.buffer.minimum_coverage_seconds:g} s "
+                    "of one continuous track.")
+            width, height = session.frame_size
             return {
                 "duration_seconds": round(source.frames_decoded / source.fps, 6),
-                "frame_width": width,
-                "frame_height": height,
-                "metrics": _metrics(
-                    source, resources, sampled, poses_emitted, predictions_emitted,
-                    track_resets, pose_ms_total, wall, config,
-                ),
+                "frame_width": width, "frame_height": height,
+                "metrics": _metrics(source, session.resources, session.sampled,
+                    session.poses_emitted, session.predictions_emitted, session.track_resets,
+                    session.pose_ms_total, perf_counter() - started, self.config),
             }
         finally:
             source.close()
+            session.close()
+
+
+class FrameSession:
+    """Per-source state shared by recorded-video and live-camera execution.
+
+    Uses capture timestamps, not completion time. Sparse or interrupted capture
+    keeps the original coverage/gap checks; it never fabricates missing poses.
+    """
+
+    def __init__(self, engine: PoseC3DEngine, release=lambda: None):
+        assert engine._extractor is not None and engine._classifier is not None
+        self.engine = engine
+        self.extractor = engine._extractor.fork()
+        self.classifier = engine._classifier
+        self.buffer = PoseSequenceBuffer(**engine._buffer_settings)
+        self.signals = PoseSignalEstimator()
+        self.resources = ResourceSampler()
+        self.frame_size = None
+        self.sampled = self.poses_emitted = self.predictions_emitted = self.track_resets = 0
+        self.pose_ms_total = 0.0
+        self.last_pose_t = self.last_frame_t = None
+        self.last_prediction_t = float("-inf")
+        self.latest_signals = None
+        self._release, self.closed = release, False
+
+    def close(self):
+        if not self.closed:
+            self.closed = True
+            self.buffer.clear()
+            self._release()
+
+    def process_frame(self, frame_rgb: np.ndarray, timestamp_seconds: float) -> dict:
+        if self.closed or self.engine._closed.is_set():
+            raise EngineClosedError("The source session is closed.")
+        t = float(timestamp_seconds)
+        if not math.isfinite(t) or t < 0 or (self.last_frame_t is not None and t <= self.last_frame_t):
+            raise InvalidVideoError("Capture timestamps must be finite, nonnegative and increasing.")
+        height, width = frame_rgb.shape[:2]
+        if self.frame_size is not None and self.frame_size != (width, height):
+            raise InvalidVideoError("The video changes resolution part-way through.")
+        self.frame_size, self.last_frame_t = (width, height), t
+        self.sampled += 1
+        frame = _resize_for_inference(frame_rgb, self.engine.config.inference_width)
+        try:
+            found = self.extractor.extract(frame, t)
+        except EngineError:
+            raise
+        except Exception as exc:
+            raise ModelRuntimeError(f"Pose estimation failed: {type(exc).__name__}: {exc}") from exc
+        pose_record = prediction = None
+        status = "no_person"
+        if found is not None:
+            pose = _to_source_coordinates(found, width / frame.shape[1], height / frame.shape[0], width, height)
+            gap = self.engine.config.max_pose_gap_seconds
+            if self.last_pose_t is not None and gap is not None and t - self.last_pose_t > gap:
+                self.buffer.clear()
+                self.signals.reset()
+                self.track_resets += 1
+            self.last_pose_t = t
+            self.latest_signals = self.signals.update(pose)
+            self.buffer.append(pose)
+            self.poses_emitted += 1
+            self.pose_ms_total += float(found.inference_ms)
+            pose_record = _pose_record(pose)
+            status = "monitoring" if self.buffer.ready else "warming_up"
+            if self.buffer.ready and t - self.last_prediction_t >= self.engine.config.prediction_interval_seconds:
+                prediction = self._predict()
+        return {"timestamp_seconds": _seconds(t), "pose": pose_record, "prediction": prediction,
+                "status": status, "coverage_seconds": self.buffer.coverage_seconds,
+                "pose_count": self.buffer.pose_count, "track_resets": self.track_resets,
+                "frame_width": width, "frame_height": height}
+
+    def _predict(self):
+        model_input = self.buffer.build()
+        if model_input is None:
+            return None
+        started = perf_counter()
+        try:
+            probability = self.classifier.predict(model_input.tensor)
+        except EngineError:
+            raise
+        except Exception as exc:
+            raise ModelRuntimeError(f"PoseC3D inference failed: {type(exc).__name__}: {exc}") from exc
+        inference_ms = (perf_counter() - started) * 1000.0
+        probability = _checked_probability(probability)
+        self.resources.sample()
+        self.predictions_emitted += 1
+        self.last_prediction_t = float(model_input.end_seconds)
+        return {"timestamp_seconds": _seconds(model_input.end_seconds), "fall_probability": probability,
+                "window_start_seconds": _seconds(model_input.start_seconds),
+                "source_pose_count": int(model_input.source_pose_count), "inference_ms": round(inference_ms, 3),
+                "urgency": _optional(self.latest_signals, "urgency"),
+                "reliability": _optional(self.latest_signals, "reliability")}
+
+    def finish(self):
+        """Offline-only drain: classify the final valid window once."""
+        if self.buffer.ready and self.last_pose_t is not None and self.last_pose_t > self.last_prediction_t:
+            return self._predict()
+        return None
 
 
 # ----------------------------------------------------------------------------- helpers
@@ -601,9 +616,8 @@ def load_engine(config: Mapping[str, Any] | EngineConfig) -> PoseC3DEngine:
     """Load and verify everything, then return a ready engine.
 
     Raises ModelUnavailableError (code ``model_unavailable``) when the weights,
-    metadata, ONNX interface or pose models cannot be verified. Pose detector and
-    estimator weights are fetched and cached by rtmlib on first use; a host
-    without network access and without that cache fails here, not mid-job.
+    metadata, ONNX interface or pose model cannot be verified. Both models must
+    exist locally; loading or inference never fetches weights from the network.
     """
 
     from icare.inference import engine_model

@@ -35,7 +35,10 @@ reports/
 .codex-finalizer/
 output/
 build/
+!src/frontend/build/
+!src/frontend/build/publicAssets.ts
 dist/
+dist-static/
 *.egg-info/
 
 # Local credentials and private keys (share only sanitized examples)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -46,11 +47,14 @@ def main() -> int:
 
     required = [
         "AGENTS.md", "README.md", "pyproject.toml",
-        ".github/workflows/ci.yml", ".github/workflows/security.yml",
-        "requirements-test.txt",
+        ".github/workflows/ci.yml",
         "models/posec3d_fall.onnx", "models/posec3d_runtime.json",
+        "models/yolo26n-pose.onnx", "models/yolo26n-pose.json", "models/YOLO26_LICENSE",
         "compose.yaml", "deployment/Dockerfile.api", "deployment/Dockerfile.web",
         "src/icare/inference/engine.py", "src/icare/api/main.py",
+        "src/icare/inference/runtime.py", "src/icare/inference/camera.py",
+        "src/icare/api/live.py", "src/frontend/build/publicAssets.ts",
+        "src/frontend/public/demos/catalog.json",
         "src/frontend/package-lock.json",
     ]
     for relative in required:
@@ -70,6 +74,13 @@ def main() -> int:
             errors.append("Model metadata must identify No Fall and Fall in that order")
     except (OSError, ValueError) as exc:
         errors.append(f"Model metadata: {exc}")
+    try:
+        pose = json.loads((ROOT / "models/yolo26n-pose.json").read_text(encoding="utf-8"))
+        digest = hashlib.sha256((ROOT / "models/yolo26n-pose.onnx").read_bytes()).hexdigest()
+        if pose.get("sha256") != digest or pose.get("keypoint_order") != "COCO-17":
+            errors.append("YOLO pose model checksum or keypoint metadata does not match")
+    except (OSError, ValueError) as exc:
+        errors.append(f"Pose model metadata: {exc}")
 
     for error in errors:
         print(error)

@@ -4,12 +4,12 @@
 
 **Temporal pose-based fall detection with a browser interface.**
 
-ICare analyzes short recorded videos using person detection, body-pose estimation
-and a temporal action classifier. Review the original video alongside skeleton
-overlays, fall-confidence traces and detected incidents, then export JSON or CSV.
-Inference runs locally on the CPU without an LLM, API key or mandatory webcam.
+ICare analyzes webcam frames and short recorded videos using YOLO26n-pose and
+PoseC3D. The local React dashboard provides **Live Detection** and **Analyze
+Video**, backed by FastAPI and CPU ONNX Runtime. A separate static build previews
+the interface without a backend or inference service.
 
-The current implementation is a recorded-video fall-detection baseline.
+The current implementation is a fall-detection research baseline.
 Its model choice is an existing implementation, not a claim of a final or novel
 architecture. Bed-exit detection, wandering and adaptive processing are outside
 the current release; extending the scope requires literature review and evaluation.
@@ -17,21 +17,25 @@ the current release; extending the scope requires literature review and evaluati
 ## Features
 
 - MP4 analysis with synchronized video, poses and confidence over source time.
+- Optional webcam detection with synchronized analyzed frames, measured timings
+  and private timestamped incident history.
 - Incident detection with de-duplication across overlapping temporal windows.
 - Private browser-session jobs, cancellation and retry without duplicate submissions.
 - Isolated model execution with crash recovery, bounded queues and storage admission.
-- Reproducible Docker Compose packaging with an end-to-end inference smoke test.
+- Docker Compose packaging for local CPU inference.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Browser[React browser] --> Proxy[nginx]
+    Browser[React: camera or upload] --> Proxy[nginx or Vite proxy]
     Proxy --> API[FastAPI jobs]
-    API --> Worker[Job runner]
+    API --> Worker[Video job runner]
+    API --> Live[Live session: one frame in flight]
     API <--> Store[(SQLite and private files)]
     Worker <--> Engine[Isolated model process]
-    Engine --> Pose[YOLOX tiny and RTMPose small]
+    Live <--> Engine
+    Engine --> Pose[YOLO26n-pose ONNX]
     Pose --> Buffer[Timestamped pose buffer]
     Buffer --> Heatmaps[Joint heatmaps]
     Heatmaps --> Model[PoseC3D ONNX]
@@ -41,10 +45,18 @@ flowchart LR
     API --> Browser
 ```
 
-The engine samples frames at six per source second, follows the largest detected
-person and estimates 17 COCO joints. A rolling pose window is resampled to 48
+Recorded videos are sampled at six frames per source second. The camera submits
+at most six frames per wall-clock second, waits for each response, then captures
+the newest frame; it never builds a frame queue. Both modes use the same
+per-source temporal pipeline. YOLO26n-pose detects people
+and estimates 17 COCO joints together in one pass, selecting the largest visible
+person in each sampled frame. It uses a fixed 640-pixel, aspect-preserving square
+input and maps boxes and joints back to source coordinates. A rolling pose window is resampled to 48
 temporal positions and converted to a `1 x 17 x 48 x 64 x 64` heatmap tensor.
-PoseC3D produces `No Fall` and `Fall` probabilities through ONNX Runtime.
+PoseC3D produces `No Fall` and `Fall` probabilities through ONNX Runtime. The
+four-second history is a maximum context window, not a fixed alert delay.
+Classification requires at least six poses spanning two seconds; gaps over one
+second restart coverage. Each model uses two CPU inference threads.
 
 An incident opens at `P(Fall) >= 0.50`. Three consecutive predictions below
 `0.35` re-arm detection. The clear rule suppresses repeated alerts; it does not
@@ -59,10 +71,24 @@ Start Docker Desktop or a Docker engine, then run from the repository root:
 docker compose up --build -d --wait
 ```
 
-Open [http://127.0.0.1:7860](http://127.0.0.1:7860) and choose **Upload Your Video**.
-MP4 uploads are limited to 50 MB and 60 seconds by default. Initial builds download
-and verify the pose weights; subsequent container startup uses the baked cache.
+Open [http://127.0.0.1:7860](http://127.0.0.1:7860) and choose **Live Detection** or
+**Analyze Video**.
+MP4 uploads are limited to 50 MB and 60 seconds by default. Both ONNX weights are
+included in `models/` and verified during the build; inference needs no downloads.
 Jobs run one at a time and private results expire after 24 hours.
+
+Press **Start Live Detection** to request camera permission. Localhost or HTTPS
+is required. The dashboard shows an uninterrupted camera preview alongside the
+exact analyzed frame and its skeleton, probabilities, deduplicated alerts and
+session history. Camera frames stay in memory; only incident/session metadata
+is retained in SQLite. Stop releases the camera and model for video analysis.
+Only one source can use inference at a time. Disconnected sessions expire after
+20 idle seconds; sessions are limited to one hour.
+
+Completed frames per session second, backend processing time and browser
+capture-to-result time are measured separately. They are not camera FPS,
+fall-onset detection latency or a throughput guarantee. Slow hardware may not
+provide enough uninterrupted pose coverage for predictions.
 
 ```sh
 docker compose logs --tail 100 api web
@@ -98,21 +124,54 @@ API cookies on the same origin. The API reads shell environment variables;
 Compose loads its environment separately. `/api/v1/health` reports the service,
 and `/api/v1/ready` reports model availability.
 
+The product uses ONNX Runtime and headless OpenCV, without PyTorch, Ultralytics
+or RTMLib at runtime. To reproduce the pose export, use a separate environment
+with `requirements-export.txt` and run `python -m icare.tools.export_pose_model`.
+The [pose model metadata](models/yolo26n-pose.json) records the source, export
+arguments and checksums. The upstream weights use [Ultralytics licensing](https://www.ultralytics.com/license);
+the upstream [license text](models/YOLO26_LICENSE) is included with the model.
+
+## Static preview
+
+From `src/frontend/`, run:
+
+```sh
+npm run build:static
+npm run preview:static
+```
+
+Open the printed URL under `/ICare/`. This build needs no API, webcam, Python,
+database or model weights. It initially shows a blank video and fixtures labelled
+**Illustrative data—not model output.** Current pipeline evaluation metrics remain
+**Not yet evaluated**. It offers no upload or live-inference controls.
+
+The public catalog is [`public/demos/catalog.json`](src/frontend/public/demos/catalog.json).
+It is intentionally empty. Future entries require `approved: true`, an `id`,
+`title`, and plain filenames for `video` (MP4), `result` (existing Result JSON
+schema), and optional `csv`. Their files belong alongside the catalog. The build
+rejects unlisted public assets, unsafe paths and symlinks. Recorded JSON supplies
+actual poses, predictions, incidents and provenance; the frontend never runs
+the models. The recording exporter is not implemented in this phase.
+
+The Pages job is prepared but disabled unless the repository variable
+`ICARE_PAGES_ENABLED` equals `true`. After publication approval, configure GitHub
+Pages to use Actions and enable that variable. Only `dist-static/` is packaged,
+after checks pass on `main`. No publication is enabled by this checkout.
+
 ## Repository layout
 
-Application code lives in one source folder. Tests, trained assets and deployment
+Application code lives in one source folder. Trained assets and deployment
 configuration are kept outside it so they do not obscure the inference pipeline.
 
 ```text
 src/
   icare/
-    inference/     Video → poses → temporal heatmaps → fall probabilities
+    inference/     Camera/video → poses → heatmaps → fall probabilities
     api/           Browser requests, jobs, incidents and result exports
     evaluation/    Optional measurements and diagnostic experiments
     tools/         Single-clip runner and repository checker
   frontend/        React/Vite application
-tests/             Python regression tests
-models/            ONNX classifier and metadata
+models/            Both ONNX models, metadata and pose-model license
 examples/          Diagnostic clips and catalog
 deployment/        Containers and nginx
 ```
@@ -148,35 +207,42 @@ NTU60-pretrained PoseC3D SlowOnly-R50 checkpoint with MMAction2.
 These are historical sample-classification results at a 0.50 threshold, not
 subject-independent or deployed monitoring accuracy. The original dataset,
 split manifest and prediction files are not included in this repository.
+They predate the YOLO26n-pose replacement and do not establish accuracy for the
+current pose-to-classifier pipeline. Changing the pose estimator changes the
+classifier's inputs, including joint-confidence values; labelled evaluation is
+needed to measure the effect. Local diagnostic clip executions verify operation,
+not accuracy preservation or improvement.
+
+Provenance remains unresolved: `posec3d_runtime.json` names an epoch-9 checkpoint,
+while the locally preserved training checkpoint is epoch 12. Neither filename
+establishes which checkpoint produced the ONNX export. The records and weights
+are preserved pending export-time evidence.
 
 ## Verification
 
-Use a separate environment for `requirements-test.txt`; it contains test-only
-headless OpenCV dependencies. From the root:
+After the editable installation described above, run from the root:
 
 ```sh
-python -m pip install -r requirements-test.txt
-python -m pip install --no-deps -e .
 python -m icare.tools.check_repository
-python -m unittest discover -s tests -v
 ```
 
 From `src/frontend/`:
 
 ```sh
-npm test
 npm run build
+npm run build:static
 npm run lint
 ```
 
-CI runs repository checks, Python tests on Windows/Linux, frontend tests/build,
-credential scanning and a real-model Compose smoke test. With local diagnostic
-examples enabled, `deployment/smoke_test.sh` exercises the running stack.
-Synthetic test adapters verify behavior and are not accuracy evidence.
+CI runs Python syntax and repository checks, frontend lint, both builds and
+credential scanning on Linux. This local inference demo has no automated test
+suite. Before demonstrating inference, start the local stack and manually try a
+video upload or the optional camera. Build and repository checks do not establish
+model accuracy or successful inference.
 
 ## Scope and limitations
 
-- Recorded-video analysis follows one primary person; it is not continuous webcam monitoring.
+- Both modes follow one primary person; they do not establish persistent identity.
 - CPU processing can take longer than the source clip. No real-time throughput guarantee is made.
 - The custom rolling-window preprocessing is not proven equivalent to the original full-clip validation pipeline.
 - Urgency and reliability are diagnostic signals, not an adaptive scheduler or calibrated safety assessment.

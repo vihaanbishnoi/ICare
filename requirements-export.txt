@@ -1,0 +1,3 @@
+# Optional, separate export environment only; the product does not use PyTorch.
+ultralytics==8.4.180
+onnx==1.23.2

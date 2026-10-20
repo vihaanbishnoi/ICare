@@ -12,6 +12,8 @@ from pathlib import Path
 import threading
 from typing import Any, Callable, Mapping, Protocol
 
+from icare.api.config import ROOT
+
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +59,7 @@ def load_real_engine() -> Engine | None:
             "ICARE_POSEC3D_MODEL", "models/posec3d_fall.onnx"
         ),
         "device": os.environ.get("ICARE_POSE_DEVICE", "cpu"),
+        "pose_model_path": os.environ.get("ICARE_POSE_MODEL", str(ROOT / "models/yolo26n-pose.onnx")),
     }
     try:
         from icare.api.process_engine import ProcessEngine

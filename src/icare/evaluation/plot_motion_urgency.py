@@ -55,7 +55,7 @@ def analyze_video(
     source_fps = source_fps if source_fps and source_fps > 0 else 30.0
     frame_step = max(1, round(source_fps / target_fps))
     estimator = PoseSignalEstimator()
-    extractor.reset()
+    extractor = extractor.fork()
     rows: list[dict] = []
     frame_index = 0
     while True:
@@ -135,7 +135,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    from icare.inference.pose import RTMPoseExtractor
+    from icare.inference.pose import YOLOPoseExtractor
 
     fall_videos = collect_videos(
         args.fall_dir, args.fall_video, args.count_per_class
@@ -146,7 +146,7 @@ def main() -> None:
     if not fall_videos and not no_fall_videos:
         raise SystemExit("No videos found. Provide --fall-dir/--no-fall-dir or videos.")
 
-    extractor = RTMPoseExtractor(device=args.device)
+    extractor = YOLOPoseExtractor(device=args.device)
     rows: list[dict] = []
     for label, videos in (("fall", fall_videos), ("no_fall", no_fall_videos)):
         for index, video in enumerate(videos, start=1):

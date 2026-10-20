@@ -1,7 +1,9 @@
-/** Public video-analysis interface. Results come from the API. */
+/** Shared local dashboard and static research preview; data sources remain explicit. */
 import { useEffect, useRef, useState } from 'react';
 import { ExamplePanel } from './components/ExamplePanel';
 import { UploadPanel } from './components/UploadPanel';
+import { LivePanel } from './components/LivePanel';
+import { STATIC_DEMO } from './config';
 import './App.css';
 
 // ─── Hero particle canvas ───────────────────────────────────────────────────
@@ -145,80 +147,32 @@ function Nav() {
 
 // ─── Demo section with tabs ─────────────────────────────────────────────────
 
-type DemoTab = 'fall' | 'normal' | 'upload';
+type DemoTab = 'live' | 'upload';
 
 function DemoSection({ tab, onTabChange }: { tab: DemoTab; onTabChange: (tab: DemoTab) => void }) {
-
-  return (
-    <section className="demo" id="demo" aria-labelledby="demo-title">
-      <div className="container">
-        <div className="section-header">
-          <h2 className="section-title" id="demo-title">Live Demo</h2>
-          <p className="section-subtitle">Select an approved example or upload a short clip (MP4, max 50 MB, 60 s)</p>
-        </div>
-
-        <div className="tabs" id="demo-tabs" role="tablist" aria-label="Demo mode selector">
-          <button
-            className={`tab${tab === 'fall' ? ' tab--active' : ''}`}
-            id="tab-fall" role="tab"
-            aria-selected={tab === 'fall'}
-            aria-controls="panel-fall"
-            onClick={() => onTabChange('fall')}
-          >
-            <span className="tab__icon" aria-hidden="true">🎬</span>
-            Fall Example
-          </button>
-          <button
-            className={`tab${tab === 'normal' ? ' tab--active' : ''}`}
-            id="tab-normal" role="tab"
-            aria-selected={tab === 'normal'}
-            aria-controls="panel-normal"
-            onClick={() => onTabChange('normal')}
-          >
-            <span className="tab__icon" aria-hidden="true">🚶</span>
-            Normal Activity
-          </button>
-          <button
-            className={`tab${tab === 'upload' ? ' tab--active' : ''}`}
-            id="tab-upload" role="tab"
-            aria-selected={tab === 'upload'}
-            aria-controls="panel-upload"
-            onClick={() => onTabChange('upload')}
-          >
-            <span className="tab__icon" aria-hidden="true">↑</span>
-            Upload Video
-          </button>
-        </div>
-
-        <div
-          className={`demo-panel${tab === 'fall' ? '' : ' demo-panel--hidden'}`}
-          id="panel-fall"
-          role="tabpanel"
-          aria-labelledby="tab-fall"
-        >
-          {tab === 'fall' && <ExamplePanel initialOutcome="fall" />}
-        </div>
-
-        <div
-          className={`demo-panel${tab === 'normal' ? '' : ' demo-panel--hidden'}`}
-          id="panel-normal"
-          role="tabpanel"
-          aria-labelledby="tab-normal"
-        >
-          {tab === 'normal' && <ExamplePanel initialOutcome="no_fall" />}
-        </div>
-
-        <div
-          className={`demo-panel${tab === 'upload' ? '' : ' demo-panel--hidden'}`}
-          id="panel-upload"
-          role="tabpanel"
-          aria-labelledby="tab-upload"
-        >
-          {tab === 'upload' && <UploadPanel />}
-        </div>
+  return <section className="demo" id="demo" aria-labelledby="demo-title"><div className="container">
+    <div className="section-header">
+      <h2 className="section-title" id="demo-title">{STATIC_DEMO ? 'Research Demonstration' : 'Detection Dashboard'}</h2>
+      <p className="section-subtitle">{STATIC_DEMO
+        ? 'Explore the interface. Video recordings and validated performance results are not yet provided.'
+        : 'Use your webcam or analyze a short MP4. All model inference runs on your local CPU.'}</p>
+    </div>
+    {STATIC_DEMO ? <ExamplePanel staticMode /> : <>
+      <div className="mode-notice local-mode">Local application · FastAPI and both ONNX models required · No cloud inference</div>
+      <div className="tabs" role="tablist" aria-label="Detection mode">
+        <button className={`tab${tab === 'live' ? ' tab--active' : ''}`} id="tab-live" role="tab"
+          aria-selected={tab === 'live'} aria-controls="panel-live" onClick={() => onTabChange('live')}>Live Detection</button>
+        <button className={`tab${tab === 'upload' ? ' tab--active' : ''}`} id="tab-upload" role="tab"
+          aria-selected={tab === 'upload'} aria-controls="panel-upload" onClick={() => onTabChange('upload')}>Analyze Video</button>
       </div>
-    </section>
-  );
+      <div role="tabpanel" id="panel-live" aria-labelledby="tab-live" hidden={tab !== 'live'}>
+        {tab === 'live' && <LivePanel />}
+      </div>
+      <div role="tabpanel" id="panel-upload" aria-labelledby="tab-upload" hidden={tab !== 'upload'}>
+        <UploadPanel />
+      </div>
+    </>}
+  </div></section>;
 }
 
 // ─── How It Works ────────────────────────────────────────────────────────────
@@ -230,7 +184,7 @@ function HowItWorks() {
       <div className="container">
         <div className="section-header">
           <h2 className="section-title" id="pipeline-title">How It Works</h2>
-          <p className="section-subtitle">A five-stage offline pipeline from raw video to fall probability</p>
+          <p className="section-subtitle">One shared inference pipeline for local camera frames and recorded videos</p>
         </div>
         <div className="pipeline" role="list" aria-label="Pipeline stages">
           <div className="pipeline-step" role="listitem">
@@ -244,7 +198,7 @@ function HowItWorks() {
             <div className="pipeline-step__num" aria-hidden="true">01</div>
             <h3 className="pipeline-step__title">Frame Sampling</h3>
             <p className="pipeline-step__desc">
-              Frames are sampled at a target of 6 per source second, selected by video timestamp for reproducibility.
+              Recorded videos use source timestamps. Camera capture sends at most six frames per second and skips stale frames while inference is busy.
             </p>
           </div>
           <div className="pipeline-arrow" aria-hidden="true">→</div>
@@ -256,8 +210,8 @@ function HowItWorks() {
               </svg>
             </div>
             <div className="pipeline-step__num" aria-hidden="true">02</div>
-            <h3 className="pipeline-step__title">Person Detection</h3>
-            <p className="pipeline-step__desc">YOLOX-tiny finds the largest person on every sampled frame in the offline engine.</p>
+            <h3 className="pipeline-step__title">Detection &amp; Pose</h3>
+            <p className="pipeline-step__desc">YOLO26n-pose detects people and estimates 17 COCO joints together in one pass, selecting the largest visible person.</p>
           </div>
           <div className="pipeline-arrow" aria-hidden="true">→</div>
           <div className="pipeline-step" role="listitem">
@@ -271,8 +225,8 @@ function HowItWorks() {
               </svg>
             </div>
             <div className="pipeline-step__num" aria-hidden="true">03</div>
-            <h3 className="pipeline-step__title">Pose Estimation</h3>
-            <p className="pipeline-step__desc">RTMPose-s estimates 17 COCO body keypoints per frame with per-joint confidence scores.</p>
+            <h3 className="pipeline-step__title">Coordinate Mapping</h3>
+            <p className="pipeline-step__desc">Boxes and joints are mapped from the model input back to the original video for synchronized skeleton overlays.</p>
           </div>
           <div className="pipeline-arrow" aria-hidden="true">→</div>
           <div className="pipeline-step" role="listitem">
@@ -312,77 +266,34 @@ function HowItWorks() {
 }
 
 // ─── Metrics ─────────────────────────────────────────────────────────────────
-// Historical group-aware classifier results; distinct from current runtime measurements.
-// precision 97.09%, recall 94.75%, F1 95.90% — group-aware classifier test.
+// Current pipeline evaluation remains separate from measured session timings.
 
 function Metrics() {
-  return (
-    <section className="metrics-section" id="metrics" aria-labelledby="metrics-title">
-      <div className="container">
-        <div className="section-header">
-          <h2 className="section-title" id="metrics-title">Performance Metrics</h2>
-          <p className="section-subtitle">
-            Held-out test set · Group-aware split · <strong>Not subject-independent</strong> · Threshold P(Fall) ≥ 0.50
-          </p>
-        </div>
-        <div className="metrics-cards" role="list" aria-label="Model performance metrics">
-          {[
-            { value: '95.90%', label: 'Fall F1 Score', desc: 'Harmonic mean of precision and recall' },
-            { value: '97.09%', label: 'Fall Precision', desc: 'TP=433, FP=13 on held-out test set' },
-            { value: '94.75%', label: 'Fall Recall', desc: 'FN=24, TP=433 on held-out test set' },
-            { value: '96.20%', label: 'Balanced Accuracy', desc: 'Equal weight per class' },
-            { value: '99.61%', label: 'Avg Precision (PR-AUC)', desc: 'Area under precision-recall curve' },
-            { value: '6,766', label: 'Dataset Samples', desc: 'Train, validation and test after deduplication' },
-          ].map(m => (
-            <div className="metric-card" role="listitem" key={m.label}>
-              <div className="metric-card__glow" aria-hidden="true" />
-              <div className="metric-card__value">{m.value}</div>
-              <div className="metric-card__label">{m.label}</div>
-              <div className="metric-card__desc">{m.desc}</div>
-            </div>
-          ))}
-        </div>
-        <div className="metrics-table-wrapper" role="region" aria-label="Confusion matrix">
-          <h3 className="metrics-table-title">Confusion Matrix — Test Set</h3>
-          <div className="table-scroll">
-            <table className="metrics-table">
-              <thead>
-                <tr>
-                  <th scope="col" />
-                  <th scope="col">Predicted: No Fall</th>
-                  <th scope="col">Predicted: Fall</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <th scope="row">Actual: No Fall</th>
-                  <td className="cell-tn">TN = 541</td>
-                  <td className="cell-fp">FP = 13</td>
-                </tr>
-                <tr>
-                  <th scope="row">Actual: Fall</th>
-                  <td className="cell-fn">FN = 24</td>
-                  <td className="cell-tp">TP = 433</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
+  return <section className="metrics-section" id="metrics" aria-labelledby="metrics-title"><div className="container">
+    <div className="section-header"><h2 className="section-title" id="metrics-title">Evaluation Status</h2>
+      <p className="section-subtitle">The current YOLO26n-pose + PoseC3D combination requires labelled evaluation.</p>
+    </div>
+    <div className="metrics-cards" role="list" aria-label="Evaluation status">
+      {['Accuracy', 'Precision', 'Recall', 'F1', 'Detection latency', 'Throughput benchmark'].map(label =>
+        <div className="metric-card" role="listitem" key={label}>
+          <div className="metric-card__value metric-card__value--pending">Not yet evaluated</div>
+          <div className="metric-card__label">{label}</div>
+        </div>)}
+    </div>
+    <p className="evaluation-note">Historical classifier figures do not validate this updated pipeline. Local session timings are measured processing statistics, not accuracy or alert-latency benchmarks.</p>
+  </div></section>;
 }
 
 // ─── Limitations ─────────────────────────────────────────────────────────────
 
 function Limitations() {
   const items = [
-    { icon: '👤', title: 'Single Person Only', body: 'Tracks only the largest detected person. Multi-person identity tracking is not implemented.' },
-    { icon: '📊', title: 'Group-Aware, Not Subject-Independent', body: 'Prevents groups from crossing folds. Subject IDs unavailable — results may not generalise to unseen individuals.' },
-    { icon: '⚡', title: 'CPU Processing', body: 'Analysis can take longer than playback. Processing times depend on the clip and CPU environment.' },
-    { icon: '🔬', title: 'Train/Deploy Domain Gap', body: 'RTMPose at deployment may differ from the pose generator used during training. Gap not yet quantified.' },
-    { icon: '🚫', title: 'Not a Medical Device', body: 'ICare is a research prototype. Must not be used as an emergency response or clinical monitoring system.' },
-    { icon: '📋', title: 'Diagnostic Motion Signals', body: 'Motion urgency and pose reliability support inspection; they do not control classifier scheduling.' },
+    { icon: '01', title: 'One primary person', body: 'The largest visible person is analyzed. Identity tracking across multiple people is not implemented.' },
+    { icon: '02', title: 'Measured CPU performance', body: 'Live throughput depends on your hardware. The camera uses the newest available frame and reports actual processing and capture-to-result timings.' },
+    { icon: '03', title: 'Temporal context required', body: 'PoseC3D needs continuous motion history. Missing-person gaps reset coverage; no confidence is invented during warm-up.' },
+    { icon: '04', title: 'Evaluation remains open', body: 'The pose estimator changed. The combined pipeline needs labelled evaluation before accuracy or reliability claims can be made.' },
+    { icon: '05', title: 'Research prototype', body: 'Visual alerts are research outputs, not clinical assessments or an emergency response service.' },
+    { icon: '06', title: 'Static public preview', body: 'The public site has no camera inference or uploads. Illustrative charts are labelled separately from any future recorded model outputs.' },
   ];
   return (
     <section className="limitations-section" id="limitations" aria-labelledby="limitations-title">
@@ -407,131 +318,49 @@ function Limitations() {
 
 // ─── Footer ──────────────────────────────────────────────────────────────────
 
-function Footer({ onTabNav }: { onTabNav: (t: DemoTab) => void }) {
-  return (
-    <footer className="footer" role="contentinfo">
-      <div className="container">
-        <div className="footer__inner">
-          <div className="footer__brand">
-            <a href="#" className="nav__logo footer__logo" aria-label="ICare Home">
-              <svg className="nav__logo-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-                <circle cx="16" cy="16" r="14" stroke="#ffa116" strokeWidth="2" />
-                <path d="M10 16 L14 20 L22 12" stroke="#ffa116" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <span className="nav__logo-text">ICare</span>
-            </a>
-            <p className="footer__tagline">Pose-Based Fall Detection · Research Prototype</p>
-            <p className="footer__disclaimer">Not a medical device. Not a production monitoring system.</p>
-          </div>
-          <div className="footer__links">
-            <div className="footer__col">
-              <h4 className="footer__col-title">Demo</h4>
-              <button className="footer__link" onClick={() => onTabNav('fall')}>Fall Example</button>
-              <button className="footer__link" onClick={() => onTabNav('normal')}>Normal Activity</button>
-              <button className="footer__link" onClick={() => onTabNav('upload')}>Upload Video</button>
-            </div>
-            <div className="footer__col">
-              <h4 className="footer__col-title">Learn</h4>
-              <a href="#how-it-works" className="footer__link">How It Works</a>
-              <a href="#metrics" className="footer__link">Performance</a>
-              <a href="#limitations" className="footer__link">Limitations</a>
-            </div>
-            <div className="footer__col">
-              <h4 className="footer__col-title">Project</h4>
-              <a href="https://github.com/vihaanbishnoi/ICare" className="footer__link" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
-            </div>
-          </div>
-        </div>
-        <div className="footer__bottom">
-          <p>ICare — Pose-Based Fall Detection Research · Group-aware baseline · Not subject-independent</p>
-        </div>
-      </div>
-    </footer>
-  );
+function Footer() {
+  return <footer className="footer"><div className="container">
+    <div className="footer__inner"><div className="footer__brand"><strong>ICare</strong>
+      <p className="footer__tagline">Pose-based temporal fall detection.</p>
+      <p className="footer__disclaimer">Research prototype · Not a medical device</p></div>
+      <div className="footer__col"><a className="footer__link" href="#how-it-works">Architecture</a>
+        <a className="footer__link" href="#metrics">Evaluation status</a>
+        <a className="footer__link" href="https://github.com/vihaanbishnoi/ICare" target="_blank" rel="noopener noreferrer">Source on GitHub ↗</a>
+      </div></div>
+    <div className="footer__bottom"><p>{STATIC_DEMO ? 'Static preview · No backend or inference service' : 'Local application · CPU inference'}</p></div>
+  </div></footer>;
 }
 
 // ─── Hero ────────────────────────────────────────────────────────────────────
 
 function Hero({ onNav }: { onNav: (tab: DemoTab) => void }) {
-  return (
-    <section className="hero" id="hero" aria-labelledby="hero-title">
-      <HeroCanvas />
-      <div className="hero__gradient" aria-hidden="true" />
-      <div className="hero__content">
-        <div className="hero__eyebrow" role="doc-subtitle">
-          <span className="hero__dot" aria-hidden="true" />
-          Research Prototype · Not a medical device
-        </div>
-        <h1 className="hero__title" id="hero-title">
-          AI-Powered<br />
-          <span className="hero__title-gradient">Fall Detection</span>
-        </h1>
-        <p className="hero__subtitle">
-          Temporal pose analysis for offline video-based fall detection.<br />
-          <span className="hero__stack">YOLOX · RTMPose · PoseC3D · ONNX Runtime</span>
-        </p>
-        <div className="hero__actions">
-          <button className="btn btn--primary" id="hero-btn-fall" onClick={() => { document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' }); onNav('fall'); }}>
-            <span className="btn__icon" aria-hidden="true">▶</span>
-            Watch Fall Example
-          </button>
-          <button className="btn btn--secondary" id="hero-btn-normal" onClick={() => { document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' }); onNav('normal'); }}>
-            <span className="btn__icon" aria-hidden="true">▶</span>
-            Normal Activity
-          </button>
-          <button className="btn btn--outline" id="hero-btn-upload" onClick={() => { document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' }); onNav('upload'); }}>
-            <span className="btn__icon" aria-hidden="true">↑</span>
-            Upload Video
-          </button>
-        </div>
-        <div className="hero__stats" aria-label="Key model performance metrics">
-          {[
-            { value: '95.90%', label: 'Fall F1' },
-            { value: '97.09%', label: 'Precision' },
-            { value: '94.75%', label: 'Recall' },
-            { value: '99.61%', label: 'Avg Precision' },
-          ].map((s, i, arr) => (
-            <span key={s.label} style={{ display: 'contents' }}>
-              <div className="hero__stat">
-                <span className="hero__stat-value">{s.value}</span>
-                <span className="hero__stat-label">{s.label}</span>
-              </div>
-              {i < arr.length - 1 && <div className="hero__stat-divider" aria-hidden="true" />}
-            </span>
-          ))}
-        </div>
-        <p className="hero__stats-disclaimer">Group-aware split · Not subject-independent · Research prototype</p>
+  const navigate = (tab: DemoTab) => { onNav(tab); document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' }); };
+  return <section className="hero" id="hero" aria-labelledby="hero-title">
+    <HeroCanvas /><div className="hero__gradient" aria-hidden="true" />
+    <div className="hero__content"><div className="hero__eyebrow"><span className="hero__dot" />
+      {STATIC_DEMO ? 'Static research demonstration' : 'Local fall-detection dashboard'}</div>
+      <h1 className="hero__title" id="hero-title">Movement.<br /><span className="hero__title-gradient">In context.</span></h1>
+      <p className="hero__subtitle">{STATIC_DEMO
+        ? 'Explore pose-based fall detection through an interactive interface preview.'
+        : 'Inspect body movement with live camera detection or recorded-video analysis.'}
+        <br /><span className="hero__stack">YOLO26n-pose · PoseC3D · ONNX Runtime</span></p>
+      <div className="hero__actions">{STATIC_DEMO
+        ? <button className="btn btn--primary" onClick={() => navigate('live')}>Explore Demonstration</button>
+        : <><button className="btn btn--primary" onClick={() => navigate('live')}>Live Detection</button>
+            <button className="btn btn--outline" onClick={() => navigate('upload')}>Analyze Video</button></>}
       </div>
-      <a href="#demo" className="hero__scroll" aria-label="Scroll to demo">
-        <div className="hero__scroll-icon" aria-hidden="true">
-          <div className="hero__scroll-arrow" />
-        </div>
-      </a>
-    </section>
-  );
+      <p className="hero__stats-disclaimer">{STATIC_DEMO
+        ? 'Illustrative data—not model output. Video demonstration not yet provided.'
+        : 'Runs locally on CPU. Camera access begins only when you press Start.'}</p>
+    </div>
+  </section>;
 }
 
 // ─── Root App ────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [demoTab, setDemoTab] = useState<DemoTab>('fall');
-
-  const goToDemo = (tab: DemoTab) => {
-    setDemoTab(tab);
-    setTimeout(() => document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' }), 10);
-  };
-
-  return (
-    <>
-      <Nav />
-      <main>
-        <Hero onNav={setDemoTab} />
-        <DemoSection tab={demoTab} onTabChange={setDemoTab} />
-        <HowItWorks />
-        <Metrics />
-        <Limitations />
-      </main>
-      <Footer onTabNav={goToDemo} />
-    </>
-  );
+  const [demoTab, setDemoTab] = useState<DemoTab>('live');
+  return <><Nav /><main><Hero onNav={setDemoTab} />
+    <DemoSection tab={demoTab} onTabChange={setDemoTab} />
+    <HowItWorks /><Metrics /><Limitations /></main><Footer /></>;
 }

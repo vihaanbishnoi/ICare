@@ -43,6 +43,16 @@ CREATE TABLE IF NOT EXISTS admissions (
 );
 CREATE INDEX IF NOT EXISTS admissions_time ON admissions(created_at_utc);
 CREATE TABLE IF NOT EXISTS service_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS live_sessions (
+    session_id TEXT PRIMARY KEY, owner TEXT NOT NULL, state TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL, ended_at_utc TEXT, model_version TEXT,
+    frames_processed INTEGER NOT NULL DEFAULT 0, error_message TEXT
+);
+CREATE TABLE IF NOT EXISTS live_incidents (
+    incident_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES live_sessions(session_id) ON DELETE CASCADE,
+    detected_at_seconds REAL NOT NULL, confidence REAL NOT NULL, created_at_utc TEXT NOT NULL
+);
 """
 
 
@@ -176,6 +186,43 @@ class Store:
 
     def count_queued(self) -> int:
         return self._read("SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'")[0]["n"]
+
+    def has_video_work(self) -> bool:
+        return bool(self._read("SELECT COUNT(*) AS n FROM jobs WHERE state IN ('queued','running')")[0]['n']
+                    or self._read("SELECT COUNT(*) AS n FROM admissions WHERE pending = 1")[0]['n'])
+
+    def create_live_session(self, session: dict, cutoff: str, max_starts: int) -> bool:
+        with self._lock, self._db:
+            count = self._db.execute('SELECT COUNT(*) FROM live_sessions WHERE owner=? AND created_at_utc>=?',
+                                     (session['owner'], cutoff)).fetchone()[0]
+            if count >= max_starts:
+                return False
+            self._db.execute('INSERT INTO live_sessions (session_id,owner,state,created_at_utc,model_version) VALUES (?,?,?,?,?)',
+                tuple(session[key] for key in ('session_id','owner','state','created_at_utc','model_version')))
+            return True
+
+    def finish_live_session(self, session_id, state, frames, error=None):
+        self._write('UPDATE live_sessions SET state=?,ended_at_utc=?,frames_processed=?,error_message=? WHERE session_id=?',
+                    (state, utc_now(), frames, error, session_id))
+
+    def add_live_incident(self, incident):
+        keys = ('incident_id','session_id','detected_at_seconds','confidence','created_at_utc')
+        self._write('INSERT INTO live_incidents VALUES (?,?,?,?,?)', tuple(incident[key] for key in keys))
+
+    def live_history(self, owner):
+        sessions = self._read('SELECT * FROM live_sessions WHERE owner=? ORDER BY created_at_utc DESC LIMIT 20', (owner,))
+        for session in sessions:
+            session.pop('owner')
+            session['incidents'] = self._read('SELECT * FROM live_incidents WHERE session_id=? ORDER BY detected_at_seconds',
+                                             (session['session_id'],))
+        return sessions
+
+    def fail_interrupted_live(self):
+        self._write("UPDATE live_sessions SET state='failed',ended_at_utc=?,error_message='Server restarted.' WHERE state='active'",
+                    (utc_now(),))
+
+    def prune_live_history(self, cutoff):
+        self._write("DELETE FROM live_sessions WHERE created_at_utc<? AND state!='active'", (cutoff,))
 
     def fail_interrupted_jobs(self) -> None:
         """Jobs left active by a previous process can never finish."""
