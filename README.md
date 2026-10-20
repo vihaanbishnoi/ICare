@@ -101,7 +101,11 @@ npm run build:static
 npm run preview:static
 ```
 
-The static preview opens under `/ICare/`. With Pages enabled and
+The static preview opens under `/ICare/`. Its homepage plays a recorded
+demonstration of the local app from `src/frontend/public/demo.mp4`; until that
+file exists it shows "Demo recording coming soon." It is the only video the
+static build accepts, and must be a real screen recording of ICare (keep it small;
+GitHub rejects files over 100 MB). With Pages enabled and
 `ICARE_PAGES_ENABLED=true`, passing changes merged into `main` deploy automatically.
 CI runs repository checks, lint, both builds, and credential scanning. There is
 no automated test suite; manually verify local inference before demonstrating it.

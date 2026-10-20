@@ -86,7 +86,7 @@ export function UploadPanel() {
   const progress = job?.progress ?? null;
   const status = phase === 'idle' ? 'Ready for a video'
     : phase === 'uploading' ? 'Uploading'
-    : phase === 'polling' ? (job?.state === 'running' ? 'Analyzing' : 'Queued')
+    : phase === 'polling' ? (job?.state === 'running' ? 'Analyzing' : job?.state === 'completed' ? 'Loading results' : 'Queued')
     : phase === 'complete' ? 'Analysis complete' : 'Analysis stopped';
 
   return <div className="mode">
@@ -119,7 +119,9 @@ export function UploadPanel() {
 
         {(phase === 'uploading' || phase === 'polling') && <div className="stage">
           <div className="stage__empty">
-            <p>{phase === 'uploading' ? 'Uploading the video' : job?.state === 'running' ? 'Running pose and fall inference' : 'Waiting for the model'}</p>
+            <p>{phase === 'uploading' ? 'Uploading the video'
+              : job?.state === 'running' ? 'Running pose and fall inference'
+              : job?.state === 'completed' ? 'Loading results' : 'Waiting for the model'}</p>
             <div className="progress" role="progressbar" aria-label="Analysis progress" aria-valuemin={0} aria-valuemax={100}
               aria-valuenow={progress !== null ? Math.round(progress * 100) : undefined}>
               <div className="progress__fill" data-indeterminate={progress === null ? 'true' : undefined}
