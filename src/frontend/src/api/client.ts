@@ -2,7 +2,7 @@
  * API client — all calls use relative /api/v1 URLs (same-origin requirement).
  * Never construct absolute URLs here; the cookie is SameSite=strict.
  */
-import type { Example, Job, Result } from '../types';
+import type { Example, Job, Result, LiveSession, LiveFrame, LiveHistory } from '../types';
 
 const BASE = '/api/v1';
 
@@ -59,4 +59,23 @@ export async function fetchResults(jobId: string, signal?: AbortSignal): Promise
 /** DELETE /api/v1/jobs/{job_id} */
 export async function deleteJob(jobId: string): Promise<void> {
   await apiFetch<void>(`/jobs/${jobId}`, { method: 'DELETE' });
+}
+
+export function startLiveSession(): Promise<LiveSession> {
+  return apiFetch('/live/sessions', { method: 'POST' });
+}
+
+export function sendLiveFrame(sessionId: string, frame: Blob, timestamp: number, signal: AbortSignal): Promise<LiveFrame> {
+  return apiFetch(`/live/sessions/${encodeURIComponent(sessionId)}/frames?timestamp_seconds=${timestamp}`, {
+    method: 'POST', body: frame, headers: { 'Content-Type': 'image/jpeg' }, signal,
+  });
+}
+
+export function stopLiveSession(sessionId: string): Promise<{ state: string }> {
+  return apiFetch(`/live/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE', keepalive: true });
+}
+
+export async function fetchLiveHistory(): Promise<LiveHistory[]> {
+  const result = await apiFetch<{ sessions: LiveHistory[] }>('/live/history');
+  return result.sessions;
 }

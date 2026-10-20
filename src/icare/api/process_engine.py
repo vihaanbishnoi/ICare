@@ -23,17 +23,39 @@ class ProcessEngineError(RuntimeError):
 
 def _model_process(connection, config, factory):
     engine = None
+    live = None
     try:
         module, name = factory.split(':')
         engine = getattr(importlib.import_module(module), name)(config)
         connection.send(('ready', engine.model_version))
         while True:
-            command, path = connection.recv()
+            command, payload = connection.recv()
             if command == 'close':
                 return
             try:
+                if command == 'start_stream':
+                    if live is not None:
+                        raise ProcessEngineError('mode_busy', 'A camera session is already active.')
+                    live = engine.start_stream()
+                    connection.send(('done', {'model_version': engine.model_version}))
+                    continue
+                if command == 'camera_frame':
+                    if live is None:
+                        raise ProcessEngineError('session_closed', 'The camera session is closed.')
+                    from icare.inference.camera import decode_camera_frame
+                    image, timestamp = payload
+                    connection.send(('done', live.process_frame(decode_camera_frame(image), timestamp)))
+                    continue
+                if command == 'stop_stream':
+                    if live is not None:
+                        live.close()
+                        live = None
+                    connection.send(('done', {}))
+                    continue
+                if live is not None:
+                    raise ProcessEngineError('mode_busy', 'Stop camera inference before analyzing a video.')
                 summary = engine.analyze_video(
-                    Path(path), on_pose=lambda value: connection.send(('pose', value)),
+                    Path(payload), on_pose=lambda value: connection.send(('pose', value)),
                     on_prediction=lambda value: connection.send(('prediction', value)),
                     on_progress=lambda value: connection.send(('progress', value)),
                     cancel_event=threading.Event(),
@@ -49,6 +71,8 @@ def _model_process(connection, config, factory):
         except (BrokenPipeError, OSError):
             pass
     finally:
+        if live is not None:
+            live.close()
         if engine is not None:
             engine.close()
         connection.close()
@@ -131,16 +155,35 @@ class ProcessEngine:
         self._reloader.start()
 
     def analyze_video(self, video_path, *, on_pose, on_prediction, on_progress, cancel_event):
+        return self._request('analyze', str(video_path), cancel_event,
+                             {'pose': on_pose, 'prediction': on_prediction, 'progress': on_progress})
+
+    def start_stream(self):
+        return self._request('start_stream', None, threading.Event(), timeout=30)
+
+    def process_frame(self, data, timestamp, *, cancel_event, timeout_seconds=30):
+        return self._request('camera_frame', (data, timestamp), cancel_event, timeout=timeout_seconds)
+
+    def stop_stream(self):
+        if self.ready:
+            self._request('stop_stream', None, threading.Event(), timeout=5)
+
+    def _request(self, command, payload, cancel_event, callbacks=None, timeout=None):
         with self._calls:
+            if cancel_event.is_set() or self._closed.is_set():
+                raise ProcessEngineError('cancelled', 'Analysis cancelled before submission.')
             if not self.ready:
                 raise ProcessEngineError('model_unavailable', 'The isolated model process is not ready.')
             with self._lock:
                 connection, process = self._connection, self._process
             try:
-                connection.send(('analyze', str(video_path)))
+                connection.send((command, payload))
+                deadline = time.monotonic() + timeout if timeout is not None else None
                 while True:
                     if cancel_event.is_set() or self._closed.is_set():
                         raise ProcessEngineError('cancelled', 'Analysis cancelled.')
+                    if deadline is not None and time.monotonic() >= deadline:
+                        raise ProcessEngineError('timeout', 'Camera inference exceeded its time limit.')
                     if connection.poll(0.05):
                         kind, value = connection.recv()
                         if kind == 'done':
@@ -148,11 +191,12 @@ class ProcessEngine:
                         if kind == 'error':
                             # A valid model-domain error leaves the child reusable.
                             raise ProcessEngineError(*value)
-                        {'pose': on_pose, 'prediction': on_prediction, 'progress': on_progress}[kind](value)
+                        if callbacks is not None:
+                            callbacks[kind](value)
                     elif not process.is_alive():
                         raise ProcessEngineError('worker_crashed', 'Model process exited during analysis.')
             except BaseException as error:
-                if not isinstance(error, ProcessEngineError) or error.code in ('cancelled', 'worker_crashed'):
+                if not isinstance(error, ProcessEngineError) or error.code in ('cancelled', 'worker_crashed', 'timeout'):
                     self._recover()
                 raise
 

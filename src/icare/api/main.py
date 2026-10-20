@@ -14,6 +14,7 @@ import logging
 from pathlib import Path
 import secrets
 import shutil
+import time
 from typing import Any
 from urllib.parse import quote
 
@@ -28,9 +29,11 @@ from icare.api.config import Settings
 from icare.api.engine import Engine, load_real_engine
 from icare.api.results import job_url
 from icare.api.schemas import Example, ExampleJobRequest, ExamplesResponse, Incident, Job
+from icare.api.schemas import LiveFrame, LiveHistoryResponse, LiveSession
 from icare.api.store import ACTIVE_STATES, Store, utc_now
 from icare.api.video import InvalidVideo, mp4_duration_seconds
 from icare.api.worker import JobRunner
+from icare.api.live import LiveError, LiveManager, MAX_FRAME_BYTES
 
 
 log = logging.getLogger(__name__)
@@ -63,6 +66,7 @@ def create_app(settings: Settings | None = None, engine: Any = _NOT_LOADED) -> F
         state.store.fail_interrupted_jobs()
         state.store.reconcile_admissions(settings.data_dir / 'jobs')
         state.admission_salt = state.store.admission_salt()
+        state.live = LiveManager(state.store, state.engine, settings)
         for folder in (settings.data_dir / 'jobs').glob('*'):
             if folder.is_dir() and state.store.get_job(folder.name) is None:
                 remove_job_files(settings, folder.name)
@@ -73,10 +77,14 @@ def create_app(settings: Settings | None = None, engine: Any = _NOT_LOADED) -> F
         state.runner.start()
         remove_expired(state.store, settings)
         async def cleanup_loop():
+            last_cleanup = time.monotonic()
             while True:
-                await asyncio.sleep(max(1.0, settings.cleanup_interval_seconds))
+                await asyncio.sleep(min(2.0, settings.cleanup_interval_seconds))
                 try:
-                    remove_expired(state.store, settings)
+                    await asyncio.to_thread(state.live.expire)
+                    if time.monotonic() - last_cleanup >= settings.cleanup_interval_seconds:
+                        remove_expired(state.store, settings)
+                        last_cleanup = time.monotonic()
                 except Exception:
                     log.exception("Scheduled job cleanup failed")
         cleanup_task = asyncio.create_task(cleanup_loop())
@@ -86,6 +94,7 @@ def create_app(settings: Settings | None = None, engine: Any = _NOT_LOADED) -> F
             cleanup_task.cancel()
             with suppress(asyncio.CancelledError):
                 await cleanup_task
+            await asyncio.to_thread(state.live.close)
             state.runner.stop()
             state.store.close()
             if state.engine is not None:
@@ -97,12 +106,16 @@ def create_app(settings: Settings | None = None, engine: Any = _NOT_LOADED) -> F
     @app.middleware("http")
     async def private_results_cache(request: Request, call_next):
         response = await call_next(request)
-        if request.url.path.startswith("/api/v1/jobs"):
+        if request.url.path.startswith(("/api/v1/jobs", "/api/v1/live")):
             response.headers["Cache-Control"] = "private, no-store"
         return response
 
     @app.exception_handler(ApiError)
     async def api_error(request: Request, exc: ApiError) -> JSONResponse:
+        return error_response(exc.status, exc.code, exc.message)
+
+    @app.exception_handler(LiveError)
+    async def live_error(request: Request, exc: LiveError) -> JSONResponse:
         return error_response(exc.status, exc.code, exc.message)
 
     @app.exception_handler(RequestValidationError)
@@ -244,7 +257,9 @@ def reserve_job(request: Request, owner_key: str, source_kind: str) -> str:
     ip_key = hmac.new(request.app.state.admission_salt.encode(), peer.encode(), hashlib.sha256).hexdigest()
     reserve = settings.result_reserve_bytes + (settings.max_upload_bytes if source_kind == 'upload' else 0)
     cutoff = (datetime.now(timezone.utc) - timedelta(seconds=settings.admission_window_seconds)).isoformat()
-    code = request.app.state.store.reserve_admission(job_id, owner_key, ip_key, reserve, settings, cutoff)
+    with request.app.state.live.lock:
+        request.app.state.live.ensure_video_allowed()
+        code = request.app.state.store.reserve_admission(job_id, owner_key, ip_key, reserve, settings, cutoff)
     if code:
         raise ApiError(429, code, 'The demo has reached an admission or storage limit. Please try later.')
     return job_id
@@ -269,11 +284,60 @@ def remove_expired(store: Store, settings: Settings) -> None:
         store.delete_job(job["job_id"])
     receipt_cutoff = (datetime.now(timezone.utc) - timedelta(seconds=settings.admission_window_seconds)).isoformat()
     store.prune_admissions(receipt_cutoff)
+    store.prune_live_history(cutoff.isoformat())
 
 
 # ---------- routes ----------
 
 router = APIRouter()
+
+
+@router.post('/live/sessions', status_code=201, response_model=LiveSession, dependencies=[Depends(same_origin)])
+def start_live(request: Request, owner_key: str = Depends(owner)) -> dict:
+    require_engine(request)
+    return request.app.state.live.start(owner_key)
+
+
+@router.post('/live/sessions/{session_id}/frames', response_model=LiveFrame, dependencies=[Depends(same_origin)])
+async def live_frame(session_id: str, timestamp_seconds: float, request: Request,
+                     owner_key: str = Depends(owner)) -> dict:
+    manager = request.app.state.live
+    ticket = manager.claim(session_id, owner_key, timestamp_seconds)
+    failure = None
+    try:
+        if request.headers.get('content-type', '').split(';')[0] != 'image/jpeg':
+            raise LiveError(400, 'invalid_frame', 'Camera frames must use image/jpeg.')
+        data = bytearray()
+        async for chunk in request.stream():
+            if len(data) + len(chunk) > MAX_FRAME_BYTES:
+                raise LiveError(413, 'frame_too_large', 'Camera frames must be at most 1 MB.')
+            data.extend(chunk)
+        return await asyncio.to_thread(manager.process, ticket, bytes(data), timestamp_seconds)
+    except LiveError as error:
+        failure = error
+        raise
+    finally:
+        manager.release(ticket)
+        if failure is not None and failure.status >= 500:
+            await asyncio.to_thread(manager.stop, session_id, owner_key, error=failure.message)
+
+
+@router.delete('/live/sessions/{session_id}', dependencies=[Depends(same_origin)])
+def stop_live(session_id: str, request: Request, owner_key: str = Depends(owner)) -> dict:
+    # Idempotent stop reveals no information about another browser's session.
+    request.app.state.live.stop(session_id, owner_key)
+    return {'state': 'stopped'}
+
+
+@router.get('/live/history', response_model=LiveHistoryResponse)
+def live_history(request: Request, owner_key: str = Depends(owner)) -> dict:
+    sessions = request.app.state.store.live_history(owner_key)
+    with request.app.state.live.lock:
+        active = request.app.state.live.session
+        for session in sessions:
+            if active is not None and active['session_id'] == session['session_id'] and active['owner'] == owner_key:
+                session['frames_processed'] = active['frames']
+    return {'sessions': sessions}
 
 
 @router.get("/health")

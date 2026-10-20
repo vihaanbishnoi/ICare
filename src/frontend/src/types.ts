@@ -77,3 +77,29 @@ export interface Result {
   metrics: Record<string, number | null>;
   reports: Record<string, string>;
 }
+
+export interface LiveIncident {
+  incident_id: string; session_id: string; detected_at_seconds: number;
+  confidence: number; created_at_utc: string;
+}
+
+export interface LiveSession {
+  session_id: string; created_at_utc: string; model_version: string;
+}
+
+export interface LiveHistory extends LiveSession {
+  state: 'active' | 'stopped' | 'failed'; frames_processed: number;
+  ended_at_utc: string | null; error_message: string | null; incidents: LiveIncident[];
+}
+
+export interface LiveFrame {
+  session_id: string; model_version: string; timestamp_seconds: number;
+  frame_width: number; frame_height: number; pose: Pose | null; prediction: Prediction | null;
+  status: 'no_person' | 'warming_up' | 'monitoring'; coverage_seconds: number; pose_count: number;
+  track_resets: number; frames_processed: number; processed_fps: number; processing_ms: number;
+  incident: LiveIncident | null; incident_latched: boolean;
+}
+
+export interface PublicExample {
+  id: string; title: string; approved: boolean; video: string; result: string; csv?: string;
+}

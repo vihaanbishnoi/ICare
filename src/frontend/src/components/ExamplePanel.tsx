@@ -8,9 +8,11 @@ import type { Example, Job } from '../types';
 import { useJobPoller } from '../hooks/useJobPoller';
 import { VideoPlayer } from './VideoPlayer';
 import { ResultsPanel } from './ResultsPanel';
+import { StaticExamplePanel } from './StaticExamplePanel';
 
 interface Props {
   initialOutcome?: 'fall' | 'no_fall';
+  staticMode?: boolean;
 }
 
 type Phase = 'idle' | 'loading_examples' | 'ready' | 'submitting' | 'polling' | 'complete' | 'error';
@@ -41,7 +43,11 @@ function ProgressBar({ progress }: { progress: number | null }) {
   );
 }
 
-export function ExamplePanel({ initialOutcome }: Props) {
+export function ExamplePanel(props: Props) {
+  return props.staticMode ? <StaticExamplePanel /> : <BackendExamplePanel initialOutcome={props.initialOutcome} />;
+}
+
+function BackendExamplePanel({ initialOutcome }: Props) {
   const [localPhase, setPhase] = useState<Phase>('loading_examples');
   const [examples, setExamples] = useState<Example[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "icare"
 version = "0.1.0"
-description = "Recorded-video fall detection research baseline"
+description = "Local camera and recorded-video fall detection research baseline"
 requires-python = ">=3.11"
 
 [tool.setuptools.packages.find]

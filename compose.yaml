@@ -4,12 +4,13 @@ services:
       context: .
       dockerfile: deployment/Dockerfile.api
       args:
-        # 1 bakes the pose weights into the image (starts ready offline); 0 skips.
+        # Both weights are copied into the image; 1 additionally verifies them at build time.
         PRELOAD_MODELS: ${ICARE_PRELOAD_MODELS:-1}
     init: true
     environment:
       ICARE_API_DATA_DIR: /app/artifacts/api
       ICARE_POSEC3D_MODEL: /app/models/posec3d_fall.onnx
+      ICARE_POSE_MODEL: /app/models/yolo26n-pose.onnx
       ICARE_POSE_DEVICE: cpu
       ICARE_COOKIE_SECURE: "${ICARE_COOKIE_SECURE:-0}"
       ICARE_ALLOWED_ORIGINS: "${ICARE_ALLOWED_ORIGINS:-}"

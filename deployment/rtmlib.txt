@@ -1,3 +1,0 @@
-# Installed with --no-deps so its opencv-python/opencv-contrib-python metadata
-# does not pull a second OpenCV beside opencv-python-headless.
-rtmlib==0.0.16

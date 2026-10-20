@@ -8,6 +8,7 @@ import type { Incident, Prediction, Result } from '../types';
 interface Props {
   result: Result;
   currentTime?: number;
+  illustrative?: boolean;
 }
 
 function fmtSec(s: number) {
@@ -70,7 +71,7 @@ function avgInferenceMs(predictions: Prediction[]): number | null {
   return times.reduce((a, b) => a + b, 0) / times.length;
 }
 
-export function ResultsPanel({ result, currentTime }: Props) {
+export function ResultsPanel({ result, currentTime, illustrative = false }: Props) {
   const peak = peakFallProb(result.predictions);
   const avgMs = avgInferenceMs(result.predictions);
 
@@ -78,6 +79,7 @@ export function ResultsPanel({ result, currentTime }: Props) {
     <div className="results-panel">
       {/* Confidence chart */}
       <div className="card" id="chart-card">
+        {illustrative && <p className="sample-label">Illustrative data—not model output.</p>}
         <div className="card__header">
           <h3 className="card__title">Confidence Timeline</h3>
           <div className="legend" aria-label="Chart legend">
@@ -99,6 +101,7 @@ export function ResultsPanel({ result, currentTime }: Props) {
 
       {/* Incident list */}
       <div className="card" id="incidents-card">
+        {illustrative && <p className="sample-label">Illustrative data—not model output.</p>}
         <div className="card__header">
           <h3 className="card__title">Detected Incidents</h3>
           <span className={`badge ${result.incidents.length ? 'badge--danger' : 'badge--safe'}`}>
@@ -109,7 +112,7 @@ export function ResultsPanel({ result, currentTime }: Props) {
       </div>
 
       {/* Summary */}
-      <div className="card" id="summary-card">
+      {!illustrative && <div className="card" id="summary-card">
         <div className="card__header">
           <h3 className="card__title">Analysis Summary</h3>
         </div>
@@ -141,10 +144,10 @@ export function ResultsPanel({ result, currentTime }: Props) {
             <span className="summary-value">0.50</span>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Report downloads */}
-      {result.reports && (
+      {!illustrative && Object.keys(result.reports).length > 0 && (
         <div className="card" id="reports-card">
           <div className="card__header">
             <h3 className="card__title">Download Reports</h3>

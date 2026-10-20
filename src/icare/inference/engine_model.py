@@ -1,6 +1,6 @@
 """Model loading and verification for icare.inference.engine.
 
-Everything that needs onnxruntime or rtmlib is imported inside a function, so
+Everything that needs onnxruntime is imported inside a function, so
 importing this module is side-effect free.
 """
 from __future__ import annotations
@@ -74,7 +74,8 @@ class OnnxTemporalClassifier:
 
         digest = hashlib.sha256(model_path.read_bytes()).hexdigest()
         try:
-            session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+            from icare.inference.runtime import cpu_session
+            session = cpu_session(model_path)
         except Exception as exc:  # noqa: BLE001 - corrupt/incompatible file
             raise ModelUnavailableError(
                 f"PoseC3D weights could not be loaded: {type(exc).__name__}: {exc}"
@@ -133,13 +134,13 @@ class OnnxTemporalClassifier:
 
 
 def load_pose_extractor(config: EngineConfig):
-    """YOLOX-tiny + RTMPose-s (COCO-17). rtmlib downloads and caches the weights."""
+    """Load the local one-pass YOLO26n-pose COCO-17 model."""
 
-    from icare.inference.pose import RTMPoseExtractor
+    from icare.inference.pose import YOLOPoseExtractor
 
     try:
-        return RTMPoseExtractor(device=config.device, detection_frequency=config.detection_frequency)
-    except Exception as exc:  # noqa: BLE001 - missing package, no network and no cache, bad cache
+        return YOLOPoseExtractor(model_path=config.pose_model_path, device=config.device)
+    except Exception as exc:  # noqa: BLE001 - missing, corrupt or incompatible model
         raise ModelUnavailableError(
             f"Pose models could not be loaded: {type(exc).__name__}: {exc}"
         ) from exc
