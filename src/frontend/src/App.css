@@ -313,3 +313,8 @@ canvas.stage__media { display: block; width: 100%; height: auto; max-height: 70v
   .progress__fill { transition: none; }
   .progress__fill[data-indeterminate='true'] { animation: none; width: 100%; opacity: 0.5; }
 }
+
+.steps--demo { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 1040px; }
+@media (max-width: 720px) {
+  .steps--demo { grid-template-columns: 1fr; }
+}

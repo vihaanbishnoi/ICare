@@ -1,17 +1,13 @@
-import { existsSync, readdirSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** The recorded demonstration for the public site; optional until it is provided. */
+/** The recorded demonstration of the earlier YOLO Tiny + RTMPose iteration. */
 export const DEMO_VIDEO = 'demo.mp4';
-
-export function hasDemoVideo(root: string): boolean {
-  return existsSync(join(root, DEMO_VIDEO));
-}
 
 /** A static build fails rather than publishing an unapproved file from public/. */
 export function validatePublicAssets(root: string): void {
-  const required = new Set(['favicon.svg']);
-  const optional = new Set([DEMO_VIDEO]);
+  const required = new Set(['favicon.svg', DEMO_VIDEO]);
+  const optional = new Set<string>();
   function visit(directory: string, prefix = '') {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const name = `${prefix}${entry.name}`;
