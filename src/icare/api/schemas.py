@@ -1,7 +1,7 @@
 """Typed API records using snake_case fields and source-time seconds."""
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, FiniteFloat
 
