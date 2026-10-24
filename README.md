@@ -17,7 +17,8 @@ The public website is a static preview. Run locally for camera and video inferen
 - **Video analysis:** MP4 uploads, progress/cancellation, synchronized playback, and JSON/CSV reports.
 - **Dashboard:** responsive layout, light/dark themes, and keyboard-accessible mode selection.
 - **Multiple people:** every person tracked with their own ID, pose window and fall alerts.
-- **Fall clips:** a ~4 second video with its timestamps for every detected fall, in a 1 GB store that expires after 24 hours.
+- **Fall clips:** a ~5 second video with its timestamps and a picture of where the fall began, in a 1 GB store that expires after 24 hours.
+- **Danger zones:** pick the room a fixed camera watches, and each fall's position is added to that room's map, so caretakers can spot bumps or other hazards.
 - **Backend:** isolated model execution, bounded queues, session-scoped results, and duplicate-alert suppression.
 
 ## Stack
@@ -77,17 +78,18 @@ and fall recorded (until re-armed).
 ## Fall clips
 
 Every incident, from an uploaded video or a live camera, gets a clip of about
-4 seconds: 3 s before the detection timestamp and 1 s after it (the window slides
-to stay 4 s at the start or end of a video). The frontend plays it from
+5 seconds: the 4 s before the detection timestamp (the model's own window, so the fall
+is inside it) and 1 s after it. The window slides to keep its length at the start or
+end of a video. The frontend plays it from
 `GET /api/v1/clips/{clip_id}/video`; `GET /api/v1/clips` lists this browser's clips
 with `detected_at_seconds`, `clip_start_seconds`, `duration_seconds`,
 `created_at_utc`, `expires_at_utc` and the storage cap. Incidents carry a `clip_id`.
 Uploaded-video timestamps are video time; live timestamps are camera-session time.
 
-In the care portal, falls found by the detector join the manager's feed as a
-"Fall detector" room (Room DET, not a resident), so they appear in Overview alerts, Live
-monitor, Fall incidents, the alert bell, the centred alert and reports, and every Clip
-button plays the recorded video. The portal's other residents, falls and the "Simulate
+In the care portal, falls found by the detector join the manager's feed (under the room
+chosen for the camera, or in a "Fall detector" room, Room DET, when none was chosen), so they
+appear in Overview alerts, Live monitor, Fall incidents, the alert bell, the centred alert and
+reports, and every Clip button plays the recorded video. The portal's other residents, falls and the "Simulate
 fall" button are still simulated demo data; their clip dialog is labelled as a drawn
 replay because no footage exists for them.
 
@@ -100,10 +102,45 @@ replay because no footage exists for them.
 - **Privacy:** clips are private to the browser session that made them. A live camera
   is still never recorded continuously: about four seconds of frames stay in memory and
   a clip is written only when a fall is detected. A live clip is `pending` until the
-  second after the fall has been captured.
+  second after the fall has been captured. Live analysis can stall, so a frame arriving
+  up to 1.5 s late still closes the clip, and a camera that goes quiet is saved after a
+  3 s wait instead of being cut short.
 - **Format:** H.264 MP4, or VP8 WebM if this OpenCV build cannot encode H.264. If neither
   is available the clip is reported as not saved rather than served in a format
   browsers cannot play. A live clip's frame rate is the rate frames were actually analyzed.
+
+## Danger zones
+
+A fixed camera sees the same room every time, so where people fall can be overlaid
+over many clips. Choose the room (**Room** menu) when you start Live detection or analyze
+a video; each fall found is then added to that room's zone. The care console's **Danger
+zones** page draws every fall over the room's photo as soft red spots that deepen where
+falls cluster, can switch between where the fall began and where the person landed, lists
+each fall, exports CSV, and lets you remove false alarms (also done automatically when
+you respond to an alert with "False alarm").
+
+- **Two points per fall:** `onset` is where the person stood when the descent began
+  (best for trip hazards, bumps and uneven flooring) and `landing` is where they ended up.
+  Onset is worked out from the person's own pose track: the point where the hips started
+  to drop. If no clear descent is found, onset repeats the landing point and is flagged
+  `onset_estimated: false` (drawn fainter). This is a heuristic and has not been
+  validated against labelled falls.
+- **Coordinates:** image positions from the fixed camera, normalised to 0..1, not floor
+  measurements. They only line up while the camera has not moved; if it moves, remove the
+  old falls or use a new room name.
+- **Picture:** each clip also gets a still of the moment the fall began, with a red ring
+  where it began and an orange ring where the person landed (`GET /api/v1/clips/{id}/snapshot`).
+  It shows a person, so it is deleted with the clip after 24 hours.
+- **Kept long term, shared:** only the coordinates, times and a reference photo of the room
+  are kept (no expiry), and they are visible to everyone using the server, so caretakers on
+  different computers see the same map. The photo is the first frame found with nobody in
+  it and can be replaced on the page. Clips and pictures stay private to the browser that
+  recorded them. API: `GET /api/v1/rooms`, `GET /rooms/{room}/danger-zone`,
+  `GET|PUT /rooms/{room}/photo`, `DELETE /rooms/{room}/falls/{id}`.
+- **Few falls:** a handful of falls is a hint, not a finding; the page says so below 5.
+
+In the care portal, a fall from a room's camera appears in that room's feed under its
+resident. Falls started without a room go to the "Fall detector" room (Room DET).
 
 ## Run locally
 

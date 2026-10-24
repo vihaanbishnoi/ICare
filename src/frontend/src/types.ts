@@ -101,7 +101,7 @@ export interface LiveFrame {
 }
 
 /**
- * A ~4 s video of one detected fall. Times are on the source clock: video time for
+ * A ~5 s video of one detected fall. Times are on the source clock: video time for
  * uploads, camera-session time for live. The clip covers
  * [clip_start_seconds, clip_start_seconds + duration_seconds].
  */
@@ -110,6 +110,8 @@ export interface Clip {
   source_kind: 'upload' | 'live';
   source_id: string;
   track_id?: TrackId;
+  /** The room the camera or upload was started for, if any. */
+  room?: string | null;
   status: 'pending' | 'ready' | 'failed';
   detected_at_seconds: number;
   confidence: number;
@@ -120,6 +122,8 @@ export interface Clip {
   size_bytes: number | null;
   media_type: string | null;
   video_url: string | null;
+  /** Still of where the fall began, kept as long as the clip. */
+  snapshot_url?: string | null;
   error_message: string | null;
 }
 
@@ -187,3 +191,41 @@ export interface DailySummaryResponse {
 }
 
 
+
+/**
+ * One fall's position in a fixed camera's image, normalised to 0..1 (x of width, y of height).
+ * `onset` is where the person was when the fall began, `landing` where they ended up.
+ * `onset_estimated` is false when no clear descent was found and onset repeats the landing point.
+ */
+export interface FallLocation {
+  fall_id: string;
+  source_kind: 'upload' | 'live';
+  track_id?: TrackId;
+  detected_at_seconds: number;
+  onset_seconds: number | null;
+  created_at_utc: string;
+  confidence: number;
+  onset_x: number; onset_y: number;
+  landing_x: number; landing_y: number;
+  body_width: number;
+  onset_estimated: boolean;
+  frame_width: number; frame_height: number;
+}
+
+/** Every recorded fall position in one room; shared by everyone using the server. */
+export interface DangerZone {
+  room: string;
+  frame_width: number | null;
+  frame_height: number | null;
+  photo_url: string | null;
+  total_falls: number;
+  generated_at_utc: string;
+  falls: FallLocation[];
+}
+
+export interface RoomSummary {
+  room: string;
+  fall_count: number;
+  last_fall_utc: string | null;
+  has_photo: boolean;
+}

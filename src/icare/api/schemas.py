@@ -145,6 +145,7 @@ class Clip(BaseModel):
     source_kind: Literal['upload', 'live']
     source_id: str
     track_id: TrackId = Field(default=None, ge=1)
+    room: str | None = None  # the room the camera or upload was started for, if any
     status: Literal['pending', 'ready', 'failed']
     detected_at_seconds: FiniteFloat = Field(ge=0)
     confidence: FiniteFloat = Field(ge=0, le=1)
@@ -155,6 +156,7 @@ class Clip(BaseModel):
     size_bytes: int | None = None
     media_type: str | None = None
     video_url: str | None = None
+    snapshot_url: str | None = None  # still of where the fall began, kept as long as the clip
     error_message: str | None = None
 
 
@@ -221,3 +223,47 @@ class DailySummaryResponse(BaseModel):
     notice: str | None = None
 
 
+
+
+class FallLocation(BaseModel):
+    """One fall's position in a fixed camera's image, normalised to 0..1 (x of width, y of height).
+
+    ``onset`` is where the person was when the fall began; ``landing`` is where they ended up.
+    ``onset_estimated`` is false when no clear descent was found and onset repeats the landing point.
+    """
+    fall_id: str
+    source_kind: Literal['upload', 'live']
+    track_id: TrackId = Field(default=None, ge=1)
+    detected_at_seconds: FiniteFloat = Field(ge=0)
+    onset_seconds: FiniteFloat | None = None
+    created_at_utc: str
+    confidence: FiniteFloat = Field(ge=0, le=1)
+    onset_x: FiniteFloat = Field(ge=0, le=1)
+    onset_y: FiniteFloat = Field(ge=0, le=1)
+    landing_x: FiniteFloat = Field(ge=0, le=1)
+    landing_y: FiniteFloat = Field(ge=0, le=1)
+    body_width: FiniteFloat = Field(ge=0, le=1)
+    onset_estimated: bool
+    frame_width: int = Field(gt=0)
+    frame_height: int = Field(gt=0)
+
+
+class DangerZone(BaseModel):
+    room: str
+    frame_width: int | None
+    frame_height: int | None
+    photo_url: str | None
+    total_falls: int = Field(ge=0)
+    generated_at_utc: str
+    falls: list[FallLocation]
+
+
+class RoomSummary(BaseModel):
+    room: str
+    fall_count: int = Field(ge=0)
+    last_fall_utc: str | None
+    has_photo: bool
+
+
+class RoomList(BaseModel):
+    rooms: list[RoomSummary]

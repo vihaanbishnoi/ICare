@@ -45,7 +45,7 @@ export function useLiveCamera() {
     finally { if (mounted.current) { setPhase('idle'); void refreshHistory(); } }
   }
 
-  async function start() {
+  async function start(room = '') {
     if (runRef.current) return;
     const run: Run = { abort: new AbortController(), stream: null, sessionId: null };
     runRef.current = run;
@@ -69,7 +69,7 @@ export function useLiveCamera() {
       video.srcObject = stream;
       await video.play();
       if (!current()) return;
-      const session = await startLiveSession();
+      const session = await startLiveSession(room || undefined);
       run.sessionId = session.session_id;
       if (!current()) { await stopLiveSession(session.session_id); return; }
       setPhase('running');
