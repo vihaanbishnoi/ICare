@@ -1,8 +1,9 @@
 /** Result details from real API data; nothing here is computed beyond simple summaries. */
 import { Fragment, useState } from 'react';
 import type { Result, TrackId } from '../types';
-import { byPerson, personColor, personName } from '../lib/people';
+import { byPerson, personColor, personKey, personLabel } from '../lib/people';
 import { ClipView } from './ClipView';
+import { BehaviourList } from './BehaviourList';
 
 const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
 
@@ -15,19 +16,19 @@ export function Readout({ label, value, note }: { label: string; value: number |
   </section>;
 }
 
-interface IncidentRow { id: string; person: TrackId; when?: string; at: number; confidence: number; clipId?: string | null }
+interface IncidentRow { id: string; person: TrackId; identity?: string | null; when?: string; at: number; confidence: number; clipId?: string | null }
 
 export function IncidentTable({ rows }: { rows: IncidentRow[] }) {
   const [openClip, setOpenClip] = useState<string | null>(null);
   const clock = rows.some(row => row.when);
-  const people = rows.some(row => row.person);
+  const people = rows.some(row => row.person || row.identity);
   const clips = rows.some(row => row.clipId);
   const columns = 2 + (people ? 1 : 0) + (clock ? 1 : 0) + (clips ? 1 : 0);
   return <table className="incidents">
     <thead><tr>{people && <th scope="col">Person</th>}{clock && <th scope="col">Time</th>}<th scope="col">At</th><th scope="col">P(Fall)</th>{clips && <th scope="col">Clip</th>}</tr></thead>
     <tbody>{rows.map(row => <Fragment key={row.id}>
       <tr>
-        {people && <td><span className="person-dot" style={{ background: personColor(row.person) }} aria-hidden="true" />{personName(row.person)}</td>}
+        {people && <td><span className="person-dot" style={{ background: personColor(row.person) }} aria-hidden="true" />{personLabel(row.person, row.identity)}</td>}
         {clock && <td>{row.when}</td>}
         <td className="num">{row.at.toFixed(2)} s</td>
         <td className="num incidents__pct">{pct(row.confidence)}</td>
@@ -45,6 +46,9 @@ export function ResultsSide({ result }: { result: Result }) {
   const meanMs = times.length ? times.reduce((a, b) => a + b, 0) / times.length : null;
   const people = byPerson(result.predictions);
   const incidentsPer = byPerson(result.incidents);
+  // A track's resident name: the first pose of theirs that was matched.
+  const names = new Map<number, string>();
+  for (const pose of result.poses) if (pose.identity && !names.has(personKey(pose.track_id))) names.set(personKey(pose.track_id), pose.identity);
 
   return <>
     <Readout label="Peak P(Fall)" value={peak} note={people.size > 1
@@ -54,13 +58,19 @@ export function ResultsSide({ result }: { result: Result }) {
       <h2>{result.incidents.length === 1 ? '1 incident' : `${result.incidents.length} incidents`}</h2>
       {result.incidents.length === 0
         ? <p className="hint">No prediction reached the 0.50 threshold.</p>
-        : <IncidentTable rows={result.incidents.map(item => ({ id: item.incident_id, person: item.track_id,
+        : <IncidentTable rows={result.incidents.map(item => ({ id: item.incident_id, person: item.track_id, identity: item.identity ?? names.get(personKey(item.track_id)),
             at: item.detected_at_seconds, confidence: item.confidence, clipId: item.clip_id }))} />}
+    </section>
+    <section className="side-block">
+      <h2>Unusual behaviour</h2>
+      {result.behaviour_events?.length
+        ? <BehaviourList events={result.behaviour_events} />
+        : <p className="hint">No repeated pacing, long stillness or long lie after a fall in this video.</p>}
     </section>
     {people.size > 1 && <section className="side-block">
       <h2>People</h2>
       <dl className="facts">{[...people].map(([key, series]) => <div key={key}>
-        <dt><span className="person-dot" style={{ background: personColor(key) }} aria-hidden="true" />{personName(key)}</dt>
+        <dt><span className="person-dot" style={{ background: personColor(key) }} aria-hidden="true" />{personLabel(key, names.get(key))}</dt>
         <dd className="num">peak {pct(Math.max(...series.map(p => p.fall_probability)))}, {incidentsPer.get(key)?.length ?? 0} fall{(incidentsPer.get(key)?.length ?? 0) === 1 ? '' : 's'}</dd>
       </div>)}</dl>
     </section>}

@@ -5,6 +5,9 @@ export const personKey = (trackId: TrackId): number => trackId ?? 0;
 
 export const personName = (trackId: TrackId): string => (trackId ? `Person ${trackId}` : 'Person');
 
+/** The enrolled resident's name once their face was matched, else "Person N". */
+export const personLabel = (trackId: TrackId, identity?: string | null): string => identity || personName(trackId);
+
 // Mid-tone hues that read on both the dark video stage and light/dark surfaces.
 const PALETTE = ['#2aa5b3', '#d18b1f', '#8b6ee6', '#3ea85f', '#4f86e8', '#9aa83a'];
 

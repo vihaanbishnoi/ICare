@@ -4,7 +4,9 @@ import { RoomPicker } from './RoomPicker';
 import { ConfidenceChart } from './ConfidenceChart';
 import { FallLocationPanel } from './FallLocationPanel';
 import { IncidentTable, Readout } from './ResultsPanel';
-import { personColor, personName } from '../lib/people';
+import { personColor, personLabel } from '../lib/people';
+import { BEHAVIOUR_LABEL, progressText } from '../lib/behaviour';
+import { BehaviourList } from './BehaviourList';
 
 export function LivePanel() {
   const live = useLiveCamera();
@@ -16,7 +18,7 @@ export function LivePanel() {
   for (const p of live.predictions) lastByPerson.set(p.track_id ?? 0, p.fall_probability);
   const inView = frame?.people ?? [];
   const current = inView.filter(person => person.status === 'monitoring' && lastByPerson.has(person.track_id))
-    .map(person => ({ track_id: person.track_id, p: lastByPerson.get(person.track_id)! }))
+    .map(person => ({ track_id: person.track_id, identity: person.identity, p: lastByPerson.get(person.track_id)! }))
     .sort((a, b) => b.p - a.p)[0] ?? null;
   const status = phase === 'running' ? frame?.incident_latched ? 'Incident recorded, waiting to re-arm'
     : frame?.status === 'monitoring' ? (inView.length > 1 ? `Monitoring ${inView.length} people` : 'Monitoring')
@@ -25,6 +27,8 @@ export function LivePanel() {
   const signal = phase === 'running' ? frame?.incident_latched ? 'alert' : 'on' : 'off';
   const showFrame = active && !!frame;
   const now = frame?.timestamp_seconds ?? 0;
+  const ongoing = live.behaviour.filter(event => event.end_seconds === null);
+  const urgent = ongoing.some(event => event.severity === 'urgent');
 
   return <div className="mode">
     <div className="controlbar">
@@ -45,6 +49,10 @@ export function LivePanel() {
     {live.error && <div className="notice notice--alert" role="alert">{live.error}</div>}
     {active && frame?.incident_latched && <div className="notice notice--alert" role="alert">
       Fall incident recorded. That person's further alerts are held until three of their predictions fall below 0.35; everyone else is still monitored. This does not mean the person has recovered.
+    </div>}
+    {active && ongoing.length > 0 && <div className={`notice ${urgent ? 'notice--alert' : 'notice--attention'}`} role="alert">
+      {ongoing.map(event => `${BEHAVIOUR_LABEL[event.event_type]}: ${personLabel(event.track_id, event.identity)}`).join(' · ')}.
+      {' '}{urgent ? 'Check on this person now.' : 'Unusual behaviour, worth a check by staff.'}
     </div>}
     {active && frame?.status === 'warming_up' && <p className="notice">
       Collecting continuous poses. Predictions start for each person after six of their poses spanning two seconds; gaps over one second restart their count.
@@ -77,17 +85,26 @@ export function LivePanel() {
 
       <aside className="workspace__side" aria-label="Live session details">
         <Readout label="Current P(Fall)" value={active && current ? current.p : null}
-          note={active && current && inView.length > 1 ? `Highest of ${inView.length} people: ${personName(current.track_id)}.` : 'An incident opens at 0.50 or above.'} />
+          note={active && current && inView.length > 1 ? `Highest of ${inView.length} people: ${personLabel(current.track_id, current.identity)}.` : 'An incident opens at 0.50 or above.'} />
         <section className="side-block">
           <h2>People in view</h2>
           {!active || inView.length === 0
             ? <p className="hint">{active ? 'Nobody detected in the latest frame.' : 'Each person is tracked separately once the camera starts.'}</p>
-            : <ul className="people">{inView.map(person => <li key={person.track_id} data-alert={person.incident_latched ? 'true' : undefined}>
-                <span><span className="person-dot" style={{ background: personColor(person.track_id) }} aria-hidden="true" />{personName(person.track_id)}</span>
+            : <ul className="people">{inView.map(person => { const note = progressText(person.behaviour);
+                const tone = person.behaviour?.active_events.includes('long_lie') ? 'urgent' : person.behaviour?.active_events.length ? 'attention' : undefined;
+                return <li key={person.track_id} data-alert={person.incident_latched ? 'true' : undefined}>
+                <span><span className="person-dot" style={{ background: personColor(person.track_id) }} aria-hidden="true" />{personLabel(person.track_id, person.identity)}
+                  {note && <span className="people__behaviour" data-tone={tone}>{note}</span>}</span>
                 <span className="num">{person.incident_latched ? 'Fall recorded'
                   : person.status === 'monitoring' ? (lastByPerson.has(person.track_id) ? `${(lastByPerson.get(person.track_id)! * 100).toFixed(1)}%` : 'Monitoring')
                   : `Collecting ${person.coverage_seconds.toFixed(1)} / 2 s`}</span>
-              </li>)}</ul>}
+              </li>; })}</ul>}
+        </section>
+        <section className="side-block">
+          <h2>Unusual behaviour</h2>
+          {live.behaviour.length === 0
+            ? <p className="hint">Watches each person for repeated pacing, no movement for a long time, and not getting up after a fall. Nobody is flagged while they are not clearly visible.</p>
+            : <BehaviourList events={live.behaviour} />}
         </section>
         <section className="side-block">
           <h2>Camera preview</h2>
@@ -111,7 +128,7 @@ export function LivePanel() {
           {live.incidents.length > 0 && <>
             <h3>This session</h3>
             <IncidentTable rows={live.incidents.map(item => ({
-              id: item.incident_id, person: item.track_id, when: new Date(item.created_at_utc).toLocaleTimeString(),
+              id: item.incident_id, person: item.track_id, identity: item.identity, when: new Date(item.created_at_utc).toLocaleTimeString(),
               at: item.detected_at_seconds, confidence: item.confidence, clipId: item.clip_id }))} />
           </>}
           {live.history.length === 0
@@ -120,12 +137,14 @@ export function LivePanel() {
               <details>
                 <summary>
                   <span>{new Date(session.created_at_utc).toLocaleString()}</span>
-                  <span>{session.incidents.length === 1 ? '1 incident' : `${session.incidents.length} incidents`}, {session.state}</span>
+                  <span>{session.incidents.length === 1 ? '1 incident' : `${session.incidents.length} incidents`}
+                    {session.behaviour_events?.length ? `, ${session.behaviour_events.length} behaviour` : ''}, {session.state}</span>
                 </summary>
                 {session.error_message && <p className="hint">{session.error_message}</p>}
                 {session.incidents.length > 0 && <IncidentTable rows={session.incidents.map(item => ({
-                  id: item.incident_id, person: item.track_id, when: new Date(item.created_at_utc).toLocaleTimeString(),
+                  id: item.incident_id, person: item.track_id, identity: item.identity, when: new Date(item.created_at_utc).toLocaleTimeString(),
                   at: item.detected_at_seconds, confidence: item.confidence, clipId: item.clip_id }))} />}
+                {session.behaviour_events && session.behaviour_events.length > 0 && <BehaviourList events={session.behaviour_events} />}
                 <p className="provenance">{session.model_version}</p>
               </details>
             </li>)}</ul>}

@@ -13,6 +13,8 @@ JobState = Literal["queued", "running", "completed", "failed", "cancelled"]
 # Per-source person ID from the engine's tracker (1, 2, ...). Optional so results
 # stored before multi-person tracking still validate.
 TrackId = int | None
+# Enrolled resident's name once their face matched (icare.inference.identity), else None.
+Identity = str | None
 
 
 class ErrorDetail(BaseModel):
@@ -48,6 +50,7 @@ class Prediction(BaseModel):
 
 class Pose(BaseModel):
     track_id: TrackId = Field(default=None, ge=1)
+    identity: Identity = None
     timestamp_seconds: FiniteFloat = Field(ge=0)
     bbox_xyxy: list[FiniteFloat] = Field(min_length=4, max_length=4)
     keypoints: list[tuple[FiniteFloat, FiniteFloat, KeypointScore]] = Field(min_length=17, max_length=17)
@@ -57,11 +60,65 @@ class Incident(BaseModel):
     incident_id: str
     job_id: str
     track_id: TrackId = Field(default=None, ge=1)
+    identity: Identity = None
     clip_id: str | None = None  # GET /clips/{clip_id}; None when no clip was kept
     detected_at_seconds: float
     confidence: float = Field(ge=0, le=1)
     status: Literal["detected", "acknowledged"]
     created_at_utc: str
+
+
+BehaviourType = Literal["pacing", "prolonged_inactivity", "long_lie"]
+
+
+class BehaviourEvent(BaseModel):
+    """One unusual-behaviour interval for one tracked person (icare.inference.behaviour).
+
+    Times are on the source clock. ``end_seconds`` is None while the event is
+    ongoing; ``end_reason`` says whether the behaviour stopped ("resolved"), the
+    person left view ("person_lost") or the video/camera ended ("source_ended").
+    ``evidence`` holds the measurements that met the rule (e.g. turns, still_seconds).
+    """
+    event_id: str
+    source_kind: Literal["upload", "live"]
+    source_id: str
+    track_id: TrackId = Field(default=None, ge=1)
+    identity: Identity = None
+    event_type: BehaviourType
+    severity: Literal["attention", "urgent"]
+    start_seconds: FiniteFloat = Field(ge=0)
+    detected_at_seconds: FiniteFloat = Field(ge=0)
+    end_seconds: FiniteFloat | None = None
+    end_reason: Literal["resolved", "person_lost", "source_ended"] | None = None
+    evidence: dict[str, FiniteFloat]
+    created_at_utc: str
+
+
+class BehaviourState(BaseModel):
+    """One person's progress towards each behaviour event, for display."""
+    evidence: Literal["good", "insufficient"]
+    still_seconds: FiniteFloat = Field(ge=0)
+    pacing_turns: int = Field(ge=0)
+    down_after_fall_seconds: FiniteFloat | None = None
+    active_events: list[BehaviourType]
+
+
+class BehaviourEventList(BaseModel):
+    events: list[BehaviourEvent]
+
+
+class Resident(BaseModel):
+    """An enrolled resident. Only face embeddings are kept, never the photos."""
+    resident_id: str
+    name: str
+    room: str | None = None
+    photo_count: int = Field(ge=0)
+    created_at_utc: str
+
+
+class ResidentList(BaseModel):
+    residents: list[Resident]
+    face_models_ready: bool
 
 
 class Result(BaseModel):
@@ -75,6 +132,8 @@ class Result(BaseModel):
     predictions: list[Prediction]
     poses: list[Pose]
     incidents: list[Incident]
+    # Stored results from before behaviour events validate as an empty list.
+    behaviour_events: list[BehaviourEvent] = []
     metrics: dict[str, FiniteFloat | int | None]
     reports: dict[str, str]
 
@@ -89,6 +148,7 @@ class LiveIncident(BaseModel):
     incident_id: str
     session_id: str
     track_id: TrackId = Field(default=None, ge=1)
+    identity: Identity = None
     clip_id: str | None = None  # pending until the second after the fall has been captured
     detected_at_seconds: FiniteFloat = Field(ge=0)
     confidence: FiniteFloat = Field(ge=0, le=1)
@@ -98,12 +158,14 @@ class LiveIncident(BaseModel):
 class LivePerson(BaseModel):
     """One tracked person in the analyzed frame, with their own temporal state."""
     track_id: int = Field(ge=1)
+    identity: Identity = None
     pose: Pose
     prediction: Prediction | None
     status: Literal['warming_up', 'monitoring']
     coverage_seconds: FiniteFloat = Field(ge=0)
     pose_count: int = Field(ge=0)
     incident_latched: bool
+    behaviour: BehaviourState | None = None
 
 
 class LiveFrame(BaseModel):
@@ -120,6 +182,8 @@ class LiveFrame(BaseModel):
     processing_ms: FiniteFloat = Field(ge=0)
     incidents: list[LiveIncident]
     incident_latched: bool
+    # Behaviour events opened or ended by this frame.
+    behaviour_events: list[BehaviourEvent] = []
 
 
 class LiveHistory(LiveSession):
@@ -128,6 +192,7 @@ class LiveHistory(LiveSession):
     ended_at_utc: str | None
     error_message: str | None
     incidents: list[LiveIncident]
+    behaviour_events: list[BehaviourEvent] = []
 
 
 class LiveHistoryResponse(BaseModel):
@@ -145,6 +210,7 @@ class Clip(BaseModel):
     source_kind: Literal['upload', 'live']
     source_id: str
     track_id: TrackId = Field(default=None, ge=1)
+    identity: Identity = None
     room: str | None = None  # the room the camera or upload was started for, if any
     status: Literal['pending', 'ready', 'failed']
     detected_at_seconds: FiniteFloat = Field(ge=0)

@@ -1,11 +1,11 @@
 /** Fall-probability trace from real predictions, one line per person; an empty state when there are none. */
 import type { Prediction, TrackId } from '../types';
-import { byPerson, personColor, personName } from '../lib/people';
+import { byPerson, personColor, personKey, personLabel } from '../lib/people';
 
 interface Props {
   predictions: Prediction[];
   /** Recorded incidents, in the same timeline as the predictions. */
-  incidents: { track_id?: TrackId; detected_at_seconds: number }[];
+  incidents: { track_id?: TrackId; identity?: string | null; detected_at_seconds: number }[];
   durationSeconds: number;
   /** Left edge of the time axis; recorded video starts at 0. */
   startSeconds?: number;
@@ -64,7 +64,7 @@ export function ConfidenceChart({ predictions, incidents, durationSeconds, start
         return <g key={i}>
           <line className="trace__incident" x1={x} x2={x} y1={PAD_T} y2={PAD_T + CH} />
           <text className="trace__incident-label" x={x + 5} y={PAD_T + 11 + (i % 3) * 12}>
-            {several ? `${personName(item.track_id)} fall` : 'Fall'}
+            {several ? `${personLabel(item.track_id, item.identity)} fall` : 'Fall'}
           </text>
         </g>;
       })}
@@ -72,7 +72,7 @@ export function ConfidenceChart({ predictions, incidents, durationSeconds, start
       {ticks.map(t => <text key={t} className="trace__axis" x={toX(t)} y={H - 6} textAnchor="middle">{`${Math.round(t)} s`}</text>)}
     </svg>
     {several && <ul className="trace__legend" aria-label="People">
-      {[...people.keys()].map(key => <li key={key}><span style={{ background: personColor(key) }} aria-hidden="true" />{personName(key)}</li>)}
+      {[...people.keys()].map(key => <li key={key}><span style={{ background: personColor(key) }} aria-hidden="true" />{personLabel(key, incidents.find(item => personKey(item.track_id) === key && item.identity)?.identity)}</li>)}
     </ul>}
   </div>;
 }

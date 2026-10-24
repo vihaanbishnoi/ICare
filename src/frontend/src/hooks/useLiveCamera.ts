@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { fetchLiveHistory, sendLiveFrame, startLiveSession, stopLiveSession } from '../api/client';
 import { cameraError, captureCamera, nextCameraFrame } from '../lib/camera';
 import { drawPose } from '../lib/poseOverlay';
-import type { LiveFrame, LiveHistory, LiveIncident, Prediction } from '../types';
+import { mergeEvents } from '../lib/behaviour';
+import type { BehaviourEvent, LiveFrame, LiveHistory, LiveIncident, Prediction } from '../types';
 
 interface Run {
   abort: AbortController; stream: MediaStream | null; sessionId: string | null;
@@ -18,6 +19,7 @@ export function useLiveCamera() {
   const [frame, setFrame] = useState<LiveFrame | null>(null);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [incidents, setIncidents] = useState<LiveIncident[]>([]);
+  const [behaviour, setBehaviour] = useState<BehaviourEvent[]>([]);
   const [history, setHistory] = useState<LiveHistory[]>([]);
   const [roundTrip, setRoundTrip] = useState<number | null>(null);
 
@@ -49,7 +51,7 @@ export function useLiveCamera() {
     if (runRef.current) return;
     const run: Run = { abort: new AbortController(), stream: null, sessionId: null };
     runRef.current = run;
-    setPhase('starting'); setError(''); setFrame(null); setPredictions([]); setIncidents([]); setRoundTrip(null);
+    setPhase('starting'); setError(''); setFrame(null); setPredictions([]); setIncidents([]); setBehaviour([]); setRoundTrip(null);
     const current = () => mounted.current && runRef.current === run && !run.abort.signal.aborted;
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera access requires localhost or HTTPS and a supported browser.');
@@ -95,7 +97,8 @@ export function useLiveCamera() {
             if (context) {
               context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
               for (const person of result.people) {
-                drawPose(context, person.pose, 1, 1, person.incident_latched, person.prediction?.fall_probability ?? null);
+                drawPose(context, person.pose, 1, 1, person.incident_latched, person.prediction?.fall_probability ?? null,
+                  person.identity ?? person.pose.identity ?? null);
               }
             }
           }
@@ -106,6 +109,8 @@ export function useLiveCamera() {
         // Keep about the same history per person as before: 120 predictions each.
         if (fresh.length) setPredictions(previous => [...previous, ...fresh].slice(-120 * Math.max(1, result.people.length)));
         if (result.incidents.length) setIncidents(previous => [...previous, ...result.incidents]);
+        const changed = result.behaviour_events ?? [];
+        if (changed.length) setBehaviour(previous => mergeEvents(previous, changed));
       }
     } catch (e) {
       if (current()) { setError(cameraError(e)); await stop(); }
@@ -122,6 +127,6 @@ export function useLiveCamera() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { videoRef, canvasRef, phase, error, frame, predictions, incidents, history,
+  return { videoRef, canvasRef, phase, error, frame, predictions, incidents, behaviour, history,
     roundTrip, start, stop, refreshHistory };
 }

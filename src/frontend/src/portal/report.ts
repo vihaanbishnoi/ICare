@@ -1,5 +1,5 @@
 /** End-of-day report exports: CSV for spreadsheets, a print-ready page for PDF. */
-import { clock, dayStats, duration, responseSeconds, type FallEvent, type Resident } from './data';
+import { clock, dayStats, duration, fallName, responseSeconds, type FallEvent, type Resident } from './data';
 
 function save(name: string, type: string, body: string) {
   const url = URL.createObjectURL(new Blob([body], { type }));
@@ -13,11 +13,10 @@ const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;
 const cell = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
 
 export function downloadCsv(falls: FallEvent[], residents: Resident[], scope = 'facility') {
-  const name = (id: string) => residents.find(r => r.id === id)?.name ?? id;
   const rows = [['Time', 'Resident', 'Room', 'Wing', 'Confidence', 'Status', 'Response time', 'Attended by', 'Note']];
   for (const f of [...falls].sort((a, b) => a.at - b.at)) {
     const rs = responseSeconds(f);
-    rows.push([new Date(f.at).toLocaleString(), name(f.residentId), f.room, f.wing, `${Math.round(f.confidence * 100)}%`,
+    rows.push([new Date(f.at).toLocaleString(), fallName(residents, f), f.room, f.wing, `${Math.round(f.confidence * 100)}%`,
       f.acknowledgedAt ? 'Attended' : 'Open', rs === null ? '' : duration(rs), f.acknowledgedBy ?? '', f.note ?? '']);
   }
   const s = dayStats(falls);
@@ -29,7 +28,6 @@ export function downloadCsv(falls: FallEvent[], residents: Resident[], scope = '
 
 export function printReport(falls: FallEvent[], residents: Resident[], title: string) {
   const s = dayStats(falls);
-  const name = (id: string) => residents.find(r => r.id === id)?.name ?? id;
   const rooms = [...s.byRoom].sort((a, b) => b[1] - a[1]);
   const max = Math.max(1, ...rooms.map(r => r[1]));
   const hourMax = Math.max(1, ...s.byHour);
@@ -55,7 +53,7 @@ th,td{text-align:left;padding:8px 6px;border-bottom:1px solid #eee;font-size:13p
 <h2>Falls by hour</h2><div class="hours">${s.byHour.map(n => `<div style="height:${(n / hourMax) * 100}%" title="${n}"></div>`).join('')}</div>
 <div class="hl"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>23:00</span></div>
 <h2>Incident log</h2><table><thead><tr><th>Time</th><th>Resident</th><th>Room</th><th>Confidence</th><th>Response</th><th>Attended by</th></tr></thead><tbody>
-${[...falls].sort((a, b) => a.at - b.at).map(f => { const rs = responseSeconds(f); return `<tr><td>${clock(f.at)}</td><td>${esc(name(f.residentId))}</td><td>${esc(f.room)}</td><td>${Math.round(f.confidence * 100)}%</td><td>${rs === null ? '<span class="open">Open</span>' : duration(rs)}</td><td>${esc(f.acknowledgedBy ?? '')}</td></tr>`; }).join('')}
+${[...falls].sort((a, b) => a.at - b.at).map(f => { const rs = responseSeconds(f); return `<tr><td>${clock(f.at)}</td><td>${esc(fallName(residents, f))}</td><td>${esc(f.room)}</td><td>${Math.round(f.confidence * 100)}%</td><td>${rs === null ? '<span class="open">Open</span>' : duration(rs)}</td><td>${esc(f.acknowledgedBy ?? '')}</td></tr>`; }).join('')}
 </tbody></table>
 <script>window.onload=()=>setTimeout(()=>window.print(),300)</script></body></html>`;
   const w = window.open('', '_blank');

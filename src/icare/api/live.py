@@ -51,6 +51,7 @@ class LiveManager:
                        'started': time.monotonic(), 'last_activity': time.monotonic(),
                        'last_timestamp': None, 'frames': 0, 'inflight': False, 'closing': False,
                        'idle': threading.Event(),
+                       'behaviour': self.settings.behaviour_monitor() if hasattr(self.settings, 'behaviour_monitor') else None,
                        'room': room, 'photo_done': room is None or self.clips is None or self.clips.zones is None,
                        'recorder': (LiveClipRecorder(self.clips, owner, document['session_id'], room)
                                     if self.clips is not None else None)}
@@ -110,6 +111,7 @@ class LiveManager:
                     raise LiveError(409, 'session_closed', 'The camera session stopped.')
                 incidents, people = [], []
                 recorder = session['recorder']
+                monitor = session['behaviour']
                 if recorder is not None:
                     # Includes this frame in any clip it opens; poses show where a fall began.
                     recorder.add_frame(timestamp, data, list(poses.values()),
@@ -127,16 +129,29 @@ class LiveManager:
                     prediction = predictions.get(track_id)
                     if prediction is not None and session['incidents'].observe(track_id, prediction['fall_probability']):
                         incident = {'incident_id': secrets.token_urlsafe(8), 'session_id': session['session_id'],
-                                    'track_id': track_id, 'detected_at_seconds': prediction['timestamp_seconds'],
+                                    'track_id': track_id, 'identity': poses[track_id].get('identity'),
+                                    'detected_at_seconds': prediction['timestamp_seconds'],
                                     'confidence': prediction['fall_probability'], 'created_at_utc': utc_now()}
                         if recorder is not None:
                             incident['clip_id'] = recorder.trigger(
                                 clip_id=incident['incident_id'], track_id=track_id,
-                                detected_at=incident['detected_at_seconds'], confidence=incident['confidence'])
+                                detected_at=incident['detected_at_seconds'], confidence=incident['confidence'],
+                                identity=incident['identity'])
                         self.store.add_live_incident(incident)
                         incidents.append(incident)
-                    people.append({**person, 'pose': poses[track_id], 'prediction': prediction,
-                                   'incident_latched': session['incidents'].latched(track_id)})
+                        if monitor is not None:
+                            monitor.note_fall(track_id, prediction['timestamp_seconds'])
+                behaviour = []
+                if monitor is not None:
+                    changed = monitor.advance(record['timestamp_seconds'])
+                    for pose in poses.values():
+                        changed += monitor.observe(pose)
+                    behaviour = self._save_behaviour(session, changed)
+                for person in record['people']:
+                    track_id = person['track_id']
+                    people.append({**person, 'pose': poses[track_id], 'prediction': predictions.get(track_id),
+                                   'incident_latched': session['incidents'].latched(track_id),
+                                   'behaviour': monitor.state(track_id) if monitor is not None else None})
                 session['frames'] += 1
                 session['last_timestamp'] = timestamp
                 session['last_activity'] = time.monotonic()
@@ -147,7 +162,8 @@ class LiveManager:
                         'session_id': session['session_id'], 'model_version': self.engine.model_version,
                         'frames_processed': session['frames'], 'processed_fps': session['frames'] / wall,
                         'processing_ms': (time.monotonic() - started) * 1000,
-                        'incident_latched': session['incidents'].any_latched()}
+                        'incident_latched': session['incidents'].any_latched(),
+                        'behaviour_events': behaviour}
         except LiveError:
             raise
         except Exception as error:
@@ -155,6 +171,16 @@ class LiveManager:
                 raise LiveError(400, 'invalid_frame', str(error)) from error
             # The route releases this frame before stopping the failed session.
             raise LiveError(503, getattr(error, 'code', 'model_error'), 'Camera inference failed. Stop and restart the session.') from error
+
+    def _save_behaviour(self, session, changed):
+        """Persist events when they open and again when they end; returns their API documents."""
+        documents = []
+        for event in {id(item): item for item in changed}.values():
+            event.setdefault('created_at_utc', utc_now())
+            document = {**event, 'source_kind': 'live', 'source_id': session['session_id']}
+            self.store.save_behaviour_event(session['owner'], document)
+            documents.append(document)
+        return documents
 
     def stop(self, session_id, owner, error=None):
         with self.lock:
@@ -166,6 +192,9 @@ class LiveManager:
             session['closing'] = True
             session['cancel'].set()
         session['idle'].wait(timeout=6)
+        if session['behaviour'] is not None:
+            with self.lock:
+                self._save_behaviour(session, session['behaviour'].finish())
         if session['recorder'] is not None:
             session['recorder'].close()  # save any fall clip still waiting for its last second
         try:

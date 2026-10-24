@@ -51,6 +51,11 @@ class Engine(Protocol):
     def close(self) -> None: ...
 
 
+def face_gallery_path() -> Path:
+    """Enrolled residents' face embeddings, shared by the API and the model process."""
+    return Path(os.environ.get("ICARE_API_DATA_DIR", ROOT / "artifacts" / "api")) / "faces.json"
+
+
 def load_real_engine() -> Engine | None:
     """Load the production model process; report unavailable on startup failure."""
 
@@ -60,6 +65,7 @@ def load_real_engine() -> Engine | None:
         ),
         "device": os.environ.get("ICARE_POSE_DEVICE", "cpu"),
         "pose_model_path": os.environ.get("ICARE_POSE_MODEL", str(ROOT / "models/yolo26n-pose.onnx")),
+        "face_gallery_path": str(face_gallery_path()),
     }
     try:
         from icare.api.process_engine import ProcessEngine

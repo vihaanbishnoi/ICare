@@ -39,6 +39,8 @@ export interface Prediction {
 /** 17 COCO keypoints [x, y, confidence]. Coordinates relative to frame_width/frame_height. */
 export interface Pose {
   track_id?: TrackId;
+  /** Enrolled resident's name once their face was matched; null while unknown. */
+  identity?: string | null;
   timestamp_seconds: number;
   bbox_xyxy: [number, number, number, number];
   keypoints: [number, number, number][];  // 17 entries
@@ -48,12 +50,45 @@ export interface Incident {
   incident_id: string;
   job_id: string;
   track_id?: TrackId;
+  identity?: string | null;
   /** Fall clip for GET /clips/{clip_id}; absent when none was kept. */
   clip_id?: string | null;
   detected_at_seconds: number;
   confidence: number;
   status: 'detected' | 'acknowledged';
   created_at_utc: string;
+}
+
+export type BehaviourType = 'pacing' | 'prolonged_inactivity' | 'long_lie';
+
+/**
+ * One unusual-behaviour interval for one tracked person. Times are on the source clock;
+ * end_seconds is null while ongoing. end_reason: the behaviour stopped ('resolved'),
+ * the person left view ('person_lost') or the video/camera ended ('source_ended').
+ */
+export interface BehaviourEvent {
+  event_id: string;
+  source_kind: 'upload' | 'live';
+  source_id: string;
+  track_id?: TrackId;
+  identity?: string | null;
+  event_type: BehaviourType;
+  severity: 'attention' | 'urgent';
+  start_seconds: number;
+  detected_at_seconds: number;
+  end_seconds: number | null;
+  end_reason: 'resolved' | 'person_lost' | 'source_ended' | null;
+  evidence: Record<string, number>;
+  created_at_utc: string;
+}
+
+/** One person's progress towards each behaviour event. */
+export interface BehaviourState {
+  evidence: 'good' | 'insufficient';
+  still_seconds: number;
+  pacing_turns: number;
+  down_after_fall_seconds: number | null;
+  active_events: BehaviourType[];
 }
 
 export interface Result {
@@ -67,12 +102,13 @@ export interface Result {
   predictions: Prediction[];
   poses: Pose[];
   incidents: Incident[];
+  behaviour_events?: BehaviourEvent[];
   metrics: Record<string, number | null>;
   reports: Record<string, string>;
 }
 
 export interface LiveIncident {
-  incident_id: string; session_id: string; track_id?: TrackId; clip_id?: string | null; detected_at_seconds: number;
+  incident_id: string; session_id: string; track_id?: TrackId; identity?: string | null; clip_id?: string | null; detected_at_seconds: number;
   confidence: number; created_at_utc: string;
 }
 
@@ -83,13 +119,15 @@ export interface LiveSession {
 export interface LiveHistory extends LiveSession {
   state: 'active' | 'stopped' | 'failed'; frames_processed: number;
   ended_at_utc: string | null; error_message: string | null; incidents: LiveIncident[];
+  behaviour_events?: BehaviourEvent[];
 }
 
 /** One tracked person in an analyzed camera frame, with independent temporal state. */
 export interface LivePerson {
-  track_id: number; pose: Pose; prediction: Prediction | null;
+  track_id: number; identity?: string | null; pose: Pose; prediction: Prediction | null;
   status: 'warming_up' | 'monitoring'; coverage_seconds: number; pose_count: number;
   incident_latched: boolean;
+  behaviour?: BehaviourState | null;
 }
 
 export interface LiveFrame {
@@ -98,6 +136,8 @@ export interface LiveFrame {
   status: 'no_person' | 'warming_up' | 'monitoring';
   track_resets: number; frames_processed: number; processed_fps: number; processing_ms: number;
   incidents: LiveIncident[]; incident_latched: boolean;
+  /** Behaviour events opened or ended by this frame. */
+  behaviour_events?: BehaviourEvent[];
 }
 
 /**
@@ -110,6 +150,7 @@ export interface Clip {
   source_kind: 'upload' | 'live';
   source_id: string;
   track_id?: TrackId;
+  identity?: string | null;
   /** The room the camera or upload was started for, if any. */
   room?: string | null;
   status: 'pending' | 'ready' | 'failed';
@@ -132,6 +173,20 @@ export interface ClipList {
   storage_used_bytes: number;
   storage_cap_bytes: number;
   retention_seconds: number;
+}
+
+/** A resident enrolled for face matching. Photos are not stored, only face measurements. */
+export interface Resident {
+  resident_id: string;
+  name: string;
+  room: string | null;
+  photo_count: number;
+  created_at_utc: string;
+}
+
+export interface ResidentList {
+  residents: Resident[];
+  face_models_ready: boolean;
 }
 
 export interface DailyLogEntry {

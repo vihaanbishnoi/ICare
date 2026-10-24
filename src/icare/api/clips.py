@@ -237,7 +237,7 @@ class ClipManager:
         ready = row["status"] == "ready"
         return {
             "clip_id": row["clip_id"], "source_kind": row["source_kind"], "source_id": row["source_id"],
-            "track_id": row["track_id"], "status": row["status"], "room": row.get("room"),
+            "track_id": row["track_id"], "identity": row.get("identity"), "status": row["status"], "room": row.get("room"),
             "detected_at_seconds": row["detected_at_seconds"], "confidence": row["confidence"],
             "clip_start_seconds": row["clip_start_seconds"], "duration_seconds": row["duration_seconds"],
             "created_at_utc": row["created_at_utc"], "expires_at_utc": self.expires_at(row["created_at_utc"]),
@@ -262,10 +262,11 @@ class ClipManager:
     def create_pending(
         self, *, clip_id: str, owner: str, source_kind: str, source_id: str, track_id: int | None,
         detected_at: float, confidence: float, clip_start: float | None = None, room: str | None = None,
+        identity: str | None = None,
     ) -> None:
         self.store.add_clip({
             "clip_id": clip_id, "owner": owner, "source_kind": source_kind, "source_id": source_id,
-            "track_id": track_id, "status": "pending", "detected_at_seconds": detected_at,
+            "track_id": track_id, "identity": identity, "status": "pending", "detected_at_seconds": detected_at,
             "confidence": confidence, "clip_start_seconds": clip_start, "created_at_utc": utc_now(),
             "room": room,
         })
@@ -403,7 +404,7 @@ class ClipManager:
                 self.create_pending(
                     clip_id=clip_id, owner=owner, source_kind="upload", source_id=job_id,
                     track_id=incident.get("track_id"), detected_at=incident["detected_at_seconds"],
-                    confidence=incident["confidence"], clip_start=start, room=room,
+                    confidence=incident["confidence"], clip_start=start, room=room, identity=incident.get("identity"),
                 )
                 incident["clip_id"] = clip_id
                 location = locations.get(clip_id)
@@ -581,7 +582,8 @@ class LiveClipRecorder:
         for pending in due:
             self._dispatch(pending)
 
-    def trigger(self, *, clip_id: str, track_id: int | None, detected_at: float, confidence: float) -> str | None:
+    def trigger(self, *, clip_id: str, track_id: int | None, detected_at: float, confidence: float,
+                identity: str | None = None) -> str | None:
         """Start a clip for a detection on the frame just added. Returns its id, or None."""
         start = detected_at - self.manager.pre_seconds
         with self._lock:
@@ -594,7 +596,7 @@ class LiveClipRecorder:
             self.manager.create_pending(
                 clip_id=clip_id, owner=self.owner, source_kind="live", source_id=self.session_id,
                 track_id=track_id, detected_at=detected_at, confidence=confidence,
-                clip_start=max(0.0, start), room=self.room,
+                clip_start=max(0.0, start), room=self.room, identity=identity,
             )
             if location is not None and self.room and self.manager.zones is not None:
                 self.manager.zones.record(

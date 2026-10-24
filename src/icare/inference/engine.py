@@ -95,6 +95,8 @@ class EngineConfig:
     max_pose_gap_seconds: float | None = 1.0
     # How long an unseen person keeps their ID (occlusion, missed detections).
     track_max_age_seconds: float = 2.0
+    # Enrolled residents' face embeddings (icare.inference.identity); None names nobody.
+    face_gallery_path: Path | None = None
 
     def __post_init__(self) -> None:
         if not (math.isfinite(self.sample_fps) and self.sample_fps > 0):
@@ -119,7 +121,7 @@ class EngineConfig:
         known = {
             "model_path", "metadata_path", "device", "sample_fps", "inference_width",
             "prediction_interval_seconds", "max_pose_gap_seconds", "pose_model_path",
-            "track_max_age_seconds",
+            "track_max_age_seconds", "face_gallery_path",
         }
         unknown = sorted(set(values) - known)
         if unknown:
@@ -131,6 +133,8 @@ class EngineConfig:
             values["pose_model_path"] = Path(values["pose_model_path"])
         if values.get("metadata_path") is not None:
             values["metadata_path"] = Path(values["metadata_path"])
+        if values.get("face_gallery_path") is not None:
+            values["face_gallery_path"] = Path(values["face_gallery_path"])
         if "inference_width" not in values and os.environ.get("ICARE_INFERENCE_WIDTH"):
             values["inference_width"] = int(os.environ["ICARE_INFERENCE_WIDTH"])
         return cls(**values)
@@ -285,8 +289,10 @@ class PoseC3DEngine:
         minimum_poses: int = 6,
         minimum_coverage_seconds: float = 2.0,
         info: Mapping[str, Any] | None = None,
+        faces: Any = None,
     ) -> None:
         self.config = config
+        self._faces = faces  # icare.inference.identity.FaceModels, or None to name nobody
         pose_version = getattr(extractor, "model_version", None)
         self.model_version: str | None = (
             f"{classifier.model_version}+{pose_version}" if pose_version else classifier.model_version
@@ -472,6 +478,10 @@ class FrameSession:
         self.pose_ms_total = 0.0
         self.last_frame_t = None
         self._release, self.closed = release, False
+        self.identities = None
+        if engine._faces is not None and engine.config.face_gallery_path is not None:
+            from icare.inference.identity import FaceGallery, SessionIdentities
+            self.identities = SessionIdentities(engine._faces, FaceGallery(engine.config.face_gallery_path))
 
     def close(self):
         if not self.closed:
@@ -512,6 +522,12 @@ class FrameSession:
             self.pose_ms_total += float(found[0].inference_ms)  # one model pass serves everyone
             self.max_people_in_frame = max(self.max_people_in_frame, len(poses))
 
+        if self.identities is not None:
+            try:
+                self.identities.update(frame_rgb, t, assignments, set(self.tracker.active_ids))
+            except Exception:  # noqa: BLE001 - naming must never stop fall detection
+                log.exception("Face matching failed; continuing without names for this frame")
+        names = self.identities.names if self.identities is not None else {}
         pose_records, people, due = [], [], []
         gap = self.engine.config.max_pose_gap_seconds
         for track_id, pose in assignments:
@@ -524,11 +540,11 @@ class FrameSession:
             person.latest_signals = person.signals.update(pose)
             person.buffer.append(pose)
             self.poses_emitted += 1
-            pose_records.append(_pose_record(pose, track_id))
+            pose_records.append(_pose_record(pose, track_id, names.get(track_id)))
             interval = self.engine.config.prediction_interval_seconds
             if person.buffer.ready and t - person.last_prediction_t >= interval:
                 due.append(track_id)
-            people.append({"track_id": track_id,
+            people.append({"track_id": track_id, "identity": names.get(track_id),
                            "status": "monitoring" if person.buffer.ready else "warming_up",
                            "coverage_seconds": person.buffer.coverage_seconds,
                            "pose_count": person.buffer.pose_count})
@@ -621,9 +637,10 @@ def _to_source_coordinates(
     )
 
 
-def _pose_record(pose: PoseFrame, track_id: int) -> dict[str, Any]:
+def _pose_record(pose: PoseFrame, track_id: int, identity: str | None = None) -> dict[str, Any]:
     return {
         "track_id": track_id,
+        "identity": identity,
         "timestamp_seconds": _seconds(pose.timestamp_seconds),
         "bbox_xyxy": [round(float(v), OUTPUT_PRECISION) for v in pose.bbox],
         "keypoints": [
@@ -695,10 +712,16 @@ def load_engine(config: Mapping[str, Any] | EngineConfig) -> PoseC3DEngine:
     except Exception:
         classifier.close()
         raise
+    faces = None
+    if settings.face_gallery_path is not None:
+        from icare.inference.identity import FaceModels
+        faces = FaceModels.load()
+        log.info("Face naming %s", "ready" if faces is not None else "unavailable (models missing)")
     engine = PoseC3DEngine(
         settings,
         extractor,
         classifier,
+        faces=faces,
         window_seconds=float(metadata["window_seconds"]),
         clip_len=int(metadata["clip_len"]),
         info={"architecture": metadata["architecture"], "classes": list(metadata["classes"])},
