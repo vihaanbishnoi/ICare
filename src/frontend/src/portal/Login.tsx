@@ -48,7 +48,6 @@ export function Login({ onSignIn }: { onSignIn: (s: Session) => void }) {
       <div className="p-login__top"><Logo /></div>
 
       <div className="p-login__pitch">
-        <span className="p-login__eyebrow"><span className="p-live-dot" />Live fall detection for care homes</span>
         <h1>Peace of mind,<br /><em>in real time.</em></h1>
         <p>Families see how their parent is doing. Staff are alerted the moment someone falls, with a short clip to see what happened.</p>
         <ul className="p-login__points">
