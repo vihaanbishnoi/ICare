@@ -25,9 +25,10 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from icare.api.clips import ClipManager
 from icare.api.config import Settings
+from icare.api.danger import MAX_PHOTO_BYTES, valid_room
 from icare.api.engine import Engine, load_real_engine
 from icare.api.results import job_url
-from icare.api.schemas import Clip, ClipList, Incident, Job
+from icare.api.schemas import Clip, ClipList, DangerZone, Incident, Job, RoomList
 from icare.api.schemas import DailyLogsResponse, DailySummaryResponse
 from icare.api.schemas import (
     CaretakersListResponse,
@@ -128,7 +129,7 @@ def create_app(settings: Settings | None = None, engine: Any = _NOT_LOADED) -> F
     @app.middleware("http")
     async def private_results_cache(request: Request, call_next):
         response = await call_next(request)
-        if request.url.path.startswith(("/api/v1/jobs", "/api/v1/live", "/api/v1/clips")):
+        if request.url.path.startswith(("/api/v1/jobs", "/api/v1/live", "/api/v1/clips", "/api/v1/rooms")):
             response.headers["Cache-Control"] = "private, no-store"
         return response
 
@@ -219,8 +220,15 @@ def job_document(job: dict) -> dict:
     ).model_dump()
 
 
+def checked_room(room: str | None) -> str | None:
+    try:
+        return valid_room(room)
+    except ValueError as error:
+        raise ApiError(400, "invalid_room", str(error)) from error
+
+
 def new_job(request: Request, owner_key: str,
-            media_path: Path, job_id: str | None = None) -> dict:
+            media_path: Path, job_id: str | None = None, room: str | None = None) -> dict:
     job = {
         "job_id": job_id or secrets.token_urlsafe(16),
         "owner": owner_key,
@@ -232,6 +240,7 @@ def new_job(request: Request, owner_key: str,
         "model_version": None,
         "error_code": None,
         "error_message": None,
+        "room": room,
     }
     if not request.app.state.store.create_job_with_capacity(
         job, request.app.state.settings.max_queued_jobs
@@ -293,9 +302,11 @@ router = APIRouter()
 
 
 @router.post('/live/sessions', status_code=201, response_model=LiveSession, dependencies=[Depends(same_origin)])
-def start_live(request: Request, owner_key: str = Depends(owner)) -> dict:
+def start_live(request: Request, room: str | None = None, owner_key: str = Depends(owner)) -> dict:
+    """Start a camera session. ``room`` says which room this fixed camera watches."""
+    room = checked_room(room)
     require_engine(request)
-    return request.app.state.live.start(owner_key)
+    return request.app.state.live.start(owner_key, room)
 
 
 @router.post('/live/sessions/{session_id}/frames', response_model=LiveFrame, dependencies=[Depends(same_origin)])
@@ -356,8 +367,10 @@ def ready(request: Request) -> JSONResponse:
 
 
 @router.post("/jobs/upload", status_code=202, dependencies=[Depends(same_origin)])
-async def create_upload_job(request: Request,
+async def create_upload_job(request: Request, room: str | None = None,
                             owner_key: str = Depends(owner)) -> dict:
+    """Upload a video. ``room`` says which room its fixed camera watched."""
+    room = checked_room(room)
     require_engine(request)
     settings: Settings = request.app.state.settings
     # Admission runs before parsing/spooling multipart content. Bound the entire
@@ -410,7 +423,7 @@ async def create_upload_job(request: Request,
             raise ApiError(400, "video_too_long",
                            f"Videos must be {settings.max_upload_seconds:g} seconds or shorter.")
         request.app.state.store.resize_admission(job_id, size + settings.result_reserve_bytes)
-        job = new_job(request, owner_key, media_path, job_id=job_id)
+        job = new_job(request, owner_key, media_path, job_id=job_id, room=room)
     except BaseException:
         remove_job_files(settings, job_id)
         request.app.state.store.finish_admission(job_id, 0)
@@ -596,3 +609,66 @@ def chat_with_assistant(request: Request, payload: ChatRequest) -> dict:
     )
 
 
+
+
+@router.get("/clips/{clip_id}/snapshot")
+def get_clip_snapshot(request: Request, clip: dict = Depends(owned_clip)) -> FileResponse:
+    """Still of where the fall began (and ended), kept as long as the clip."""
+    path = request.app.state.clips.snapshot_path(clip)
+    if path is None:
+        raise ApiError(404, "snapshot_unavailable", "This clip has no picture of the fall location.")
+    return FileResponse(path, media_type="image/jpeg")
+
+
+# ---------- rooms: danger zones (shared by everyone using this server, kept long term) ----------
+
+def room_name(room: str) -> str:
+    value = checked_room(room)
+    if value is None:
+        raise ApiError(400, "invalid_room", "A room name is required.")
+    return value
+
+
+@router.get("/rooms", response_model=RoomList)
+def list_rooms(request: Request) -> dict:
+    return {"rooms": request.app.state.clips.zones.rooms()}
+
+
+@router.get("/rooms/{room}/danger-zone", response_model=DangerZone)
+def get_danger_zone(room: str, request: Request) -> dict:
+    """Every recorded fall position in this room, for overlaying on its fixed camera view."""
+    return request.app.state.clips.zones.zone(room_name(room))
+
+
+@router.get("/rooms/{room}/photo")
+def get_room_photo(room: str, request: Request) -> FileResponse:
+    path = request.app.state.clips.zones.photo_path(room_name(room))
+    if path is None:
+        raise ApiError(404, "no_photo", "This room has no reference photo yet.")
+    return FileResponse(path, media_type="image/jpeg")
+
+
+@router.put("/rooms/{room}/photo", status_code=204, dependencies=[Depends(same_origin)])
+async def put_room_photo(room: str, request: Request) -> Response:
+    """Replace the room's reference photo (JPEG or PNG body)."""
+    name = room_name(room)
+    if request.headers.get("content-type", "").split(";")[0] not in ("image/jpeg", "image/png"):
+        raise ApiError(400, "invalid_photo", "Send the photo as image/jpeg or image/png.")
+    data = bytearray()
+    async for chunk in request.stream():
+        if len(data) + len(chunk) > MAX_PHOTO_BYTES:
+            raise ApiError(413, "photo_too_large", f"The photo must be {MAX_PHOTO_BYTES // (1024 * 1024)} MB or smaller.")
+        data.extend(chunk)
+    try:
+        request.app.state.clips.zones.set_photo(name, bytes(data), "upload")
+    except ValueError as error:
+        raise ApiError(400, "invalid_photo", str(error)) from error
+    return Response(status_code=204)
+
+
+@router.delete("/rooms/{room}/falls/{fall_id}", status_code=204, dependencies=[Depends(same_origin)])
+def remove_room_fall(room: str, fall_id: str, request: Request) -> Response:
+    """Take one fall out of the danger zone, e.g. a false alarm."""
+    if not request.app.state.clips.zones.remove_fall(room_name(room), fall_id):
+        raise ApiError(404, "not_found", "No such fall in this room.")
+    return Response(status_code=204)

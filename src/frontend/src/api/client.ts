@@ -3,7 +3,7 @@
  * Never construct absolute URLs here; the cookie is SameSite=strict.
  */
 import type {
-  Clip, ClipList, Job, Result, LiveSession, LiveFrame, LiveHistory,
+  Clip, ClipList, DangerZone, Job, Result, LiveSession, LiveFrame, LiveHistory, RoomSummary,
   DailyLogsResponse, DailySummaryResponse, CaretakersListResponse,
   SchedulerStatusResponse, Trigger10pmResponse, ChatMessage, ChatResponse
 } from '../types';
@@ -24,11 +24,14 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return res.status === 204 ? undefined as T : res.json() as Promise<T>;
 }
 
+/** `?room=` says which room the fixed camera watches, so its falls build that room's danger zone. */
+const roomQuery = (room?: string) => (room ? `?room=${encodeURIComponent(room)}` : '');
+
 /** POST /api/v1/jobs/upload  →  202 Job */
-export async function startUploadJob(file: File): Promise<Job> {
+export async function startUploadJob(file: File, room?: string): Promise<Job> {
   const form = new FormData();
   form.append('file', file);
-  return apiFetch<Job>('/jobs/upload', {
+  return apiFetch<Job>(`/jobs/upload${roomQuery(room)}`, {
     method: 'POST',
     body: form,
     // Do NOT set Content-Type — browser must set multipart boundary
@@ -50,8 +53,8 @@ export async function deleteJob(jobId: string): Promise<void> {
   await apiFetch<void>(`/jobs/${jobId}`, { method: 'DELETE' });
 }
 
-export function startLiveSession(): Promise<LiveSession> {
-  return apiFetch('/live/sessions', { method: 'POST' });
+export function startLiveSession(room?: string): Promise<LiveSession> {
+  return apiFetch(`/live/sessions${roomQuery(room)}`, { method: 'POST' });
 }
 
 export function sendLiveFrame(sessionId: string, frame: Blob, timestamp: number, signal: AbortSignal): Promise<LiveFrame> {
@@ -129,4 +132,24 @@ export function sendChatMessage(
   });
 }
 
+/** GET /api/v1/rooms: rooms that have recorded falls or a reference photo. */
+export async function fetchRooms(signal?: AbortSignal): Promise<RoomSummary[]> {
+  return (await apiFetch<{ rooms: RoomSummary[] }>('/rooms', { signal })).rooms;
+}
 
+/** GET /api/v1/rooms/{room}/danger-zone: shared by everyone using the server. */
+export function fetchDangerZone(room: string, signal?: AbortSignal): Promise<DangerZone> {
+  return apiFetch<DangerZone>(`/rooms/${encodeURIComponent(room)}/danger-zone`, { signal });
+}
+
+/** PUT /api/v1/rooms/{room}/photo: replace the room's reference photo (JPEG or PNG). */
+export async function putRoomPhoto(room: string, file: File): Promise<void> {
+  await apiFetch<void>(`/rooms/${encodeURIComponent(room)}/photo`, {
+    method: 'PUT', body: file, headers: { 'Content-Type': file.type },
+  });
+}
+
+/** DELETE /api/v1/rooms/{room}/falls/{id}: take one fall (e.g. a false alarm) out of the zone. */
+export async function deleteRoomFall(room: string, fallId: string): Promise<void> {
+  await apiFetch<void>(`/rooms/${encodeURIComponent(room)}/falls/${encodeURIComponent(fallId)}`, { method: 'DELETE' });
+}

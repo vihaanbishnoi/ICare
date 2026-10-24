@@ -35,7 +35,7 @@ class LiveManager:
         if self.session is not None:
             raise LiveError(409, 'mode_busy', 'Stop Live Detection before analyzing a video.')
 
-    def start(self, owner):
+    def start(self, owner, room=None):
         with self.lock:
             if self.session is not None or self.store.has_video_work():
                 raise LiveError(409, 'mode_busy', 'Another source is using inference. Stop it or wait for it to finish.')
@@ -51,7 +51,8 @@ class LiveManager:
                        'started': time.monotonic(), 'last_activity': time.monotonic(),
                        'last_timestamp': None, 'frames': 0, 'inflight': False, 'closing': False,
                        'idle': threading.Event(),
-                       'recorder': (LiveClipRecorder(self.clips, owner, document['session_id'])
+                       'room': room, 'photo_done': room is None or self.clips is None or self.clips.zones is None,
+                       'recorder': (LiveClipRecorder(self.clips, owner, document['session_id'], room)
                                     if self.clips is not None else None)}
             session['idle'].set()
             self.session = session  # Reserve before loading the model-side session.
@@ -110,7 +111,17 @@ class LiveManager:
                 incidents, people = [], []
                 recorder = session['recorder']
                 if recorder is not None:
-                    recorder.add_frame(timestamp, data)  # includes this frame in any clip it opens
+                    # Includes this frame in any clip it opens; poses show where a fall began.
+                    recorder.add_frame(timestamp, data, list(poses.values()),
+                                       (record['frame_width'], record['frame_height']))
+                if not session['photo_done']:
+                    # The first frame with nobody in it becomes the room's reference photo.
+                    zones = self.clips.zones
+                    if zones.has_photo(session['room']):
+                        session['photo_done'] = True
+                    elif record['status'] == 'no_person':
+                        zones.ensure_photo(session['room'], data)
+                        session['photo_done'] = True
                 for person in record['people']:
                     track_id = person['track_id']
                     prediction = predictions.get(track_id)
@@ -175,6 +186,8 @@ class LiveManager:
             expired = session and not session['inflight'] and time.monotonic() - session['last_activity'] > 20
         if expired:
             self.stop(session['session_id'], session['owner'], error='Camera disconnected or stopped sending frames.')
+        elif session is not None and session['recorder'] is not None:
+            session['recorder'].flush_due()  # save clips whose after-frames never arrived
 
     def close(self):
         with self.lock:

@@ -6,6 +6,7 @@ import { Login, MANAGER } from './Login';
 import { Manager } from './Manager';
 import './portal.css';
 import './extras.css';
+import './layout.css';
 
 export function Portal() {
   // Older saved sign-ins keep their old name; managers always show the current account name.

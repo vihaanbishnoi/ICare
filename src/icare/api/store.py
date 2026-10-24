@@ -63,7 +63,33 @@ CREATE TABLE IF NOT EXISTS clips (
     file_name TEXT,
     media_type TEXT,
     size_bytes INTEGER NOT NULL DEFAULT 0,
-    error_message TEXT
+    error_message TEXT,
+    room TEXT,
+    snapshot_file TEXT
+);
+CREATE TABLE IF NOT EXISTS fall_locations (
+    fall_id TEXT PRIMARY KEY,
+    room TEXT NOT NULL,
+    source_kind TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    track_id INTEGER,
+    detected_at_seconds REAL NOT NULL,
+    onset_seconds REAL,
+    onset_x REAL NOT NULL, onset_y REAL NOT NULL,
+    landing_x REAL NOT NULL, landing_y REAL NOT NULL,
+    body_width REAL NOT NULL,
+    onset_estimated INTEGER NOT NULL,
+    frame_width INTEGER NOT NULL, frame_height INTEGER NOT NULL,
+    confidence REAL NOT NULL,
+    created_at_utc TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS fall_locations_room ON fall_locations(room, created_at_utc);
+CREATE TABLE IF NOT EXISTS room_photos (
+    room TEXT PRIMARY KEY,
+    file_name TEXT NOT NULL,
+    width INTEGER NOT NULL, height INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    updated_at_utc TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS clips_owner ON clips(owner, created_at_utc);
 CREATE INDEX IF NOT EXISTS clips_source ON clips(source_id);
@@ -121,6 +147,12 @@ class Store:
                     self._db.execute(f'ALTER TABLE {table} ADD COLUMN track_id INTEGER')
                 if 'clip_id' not in columns:
                     self._db.execute(f'ALTER TABLE {table} ADD COLUMN clip_id TEXT')
+            # Room support: jobs remember the room they were started for; clips remember it
+            # and their per-fall picture.
+            for table, column in (('jobs', 'room'), ('clips', 'room'), ('clips', 'snapshot_file')):
+                columns = {row[1] for row in self._db.execute(f'PRAGMA table_info({table})')}
+                if column not in columns:
+                    self._db.execute(f'ALTER TABLE {table} ADD COLUMN {column} TEXT')
             self._db.commit()
 
     def close(self) -> None:
@@ -319,7 +351,8 @@ class Store:
 
     CLIP_COLUMNS = ('clip_id', 'owner', 'source_kind', 'source_id', 'track_id', 'status',
                     'detected_at_seconds', 'confidence', 'clip_start_seconds', 'duration_seconds',
-                    'created_at_utc', 'file_name', 'media_type', 'size_bytes', 'error_message')
+                    'created_at_utc', 'file_name', 'media_type', 'size_bytes', 'error_message',
+                    'room', 'snapshot_file')
 
     def add_clip(self, clip: dict[str, Any]) -> None:
         keys = [key for key in self.CLIP_COLUMNS if key in clip]
@@ -353,7 +386,8 @@ class Store:
         self._write("DELETE FROM clips WHERE clip_id = ?", (clip_id,))
 
     def clip_file_names(self) -> set[str]:
-        return {row["file_name"] for row in self._read("SELECT file_name FROM clips WHERE file_name IS NOT NULL")}
+        rows = self._read("SELECT file_name, snapshot_file FROM clips")
+        return {name for row in rows for name in (row["file_name"], row["snapshot_file"]) if name}
 
     def fail_interrupted_clips(self) -> None:
         """A live clip still pending after a restart can never be completed."""
@@ -434,3 +468,34 @@ class Store:
             )
         return self._read("SELECT * FROM caretaker_emails ORDER BY sent_at_utc DESC LIMIT ?", (limit,))
 
+    # ----- rooms: where falls happen (the danger zone). Kept long term, shared by everyone.
+
+    def add_fall_location(self, row: dict[str, Any]) -> None:
+        keys = list(row)
+        self._write(f"INSERT OR REPLACE INTO fall_locations ({','.join(keys)}) VALUES ({','.join('?' * len(keys))})",
+                    tuple(row.values()))
+
+    def fall_locations(self, room: str, limit: int = 2000) -> list[dict[str, Any]]:
+        return self._read("SELECT * FROM fall_locations WHERE room = ? ORDER BY created_at_utc DESC LIMIT ?", (room, limit))
+
+    def count_fall_locations(self, room: str) -> int:
+        return self._read("SELECT COUNT(*) AS n FROM fall_locations WHERE room = ?", (room,))[0]["n"]
+
+    def delete_fall_location(self, room: str, fall_id: str) -> bool:
+        return self._write("DELETE FROM fall_locations WHERE room = ? AND fall_id = ?", (room, fall_id)) == 1
+
+    def room_summaries(self) -> list[dict[str, Any]]:
+        return self._read(
+            "SELECT room, COUNT(*) AS fall_count, MAX(created_at_utc) AS last_fall_utc FROM fall_locations GROUP BY room")
+
+    def get_room_photo(self, room: str) -> dict[str, Any] | None:
+        rows = self._read("SELECT * FROM room_photos WHERE room = ?", (room,))
+        return rows[0] if rows else None
+
+    def room_photos(self) -> list[dict[str, Any]]:
+        return self._read("SELECT * FROM room_photos")
+
+    def set_room_photo(self, row: dict[str, Any]) -> None:
+        keys = list(row)
+        self._write(f"INSERT OR REPLACE INTO room_photos ({','.join(keys)}) VALUES ({','.join('?' * len(keys))})",
+                    tuple(row.values()))

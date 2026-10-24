@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ago, clock, dayLabel, duration, fallsForDay, HISTORY_DAYS, markRead, responseSeconds, STATUS_LABEL, useNow, useStore, type FallEvent, type Session } from './data';
 import { downloadCsv, printReport } from './report';
 import { FallClip, Icon, Initials, Logo, Modal, StatusPill } from './ui';
-import { BigAlert, DayStrip } from './extras';
+import { BigAlert, dayChipLabels } from './extras';
+import './family.css';
 
 const STATUS_COPY = {
   active: 'Up and moving around',
@@ -46,7 +47,7 @@ export function Family({ session, onSignOut }: { session: Session; onSignOut: ()
       { at: f.at, kind: 'fall', title: 'Fall detected', text: `Room ${f.room}. Staff alerted automatically.`, fall: f },
       ...(f.acknowledgedAt ? [{ at: f.acknowledgedAt, kind: 'ok', title: 'Staff attended', text: `${f.note ?? 'Checked on'} · within ${duration(responseSeconds(f)!)}`, fall: f }] : []),
     ]),
-    ...(day === 0 ? [{ at: me.since, kind: me.status, title: STATUS_LABEL[me.status], text: STATUS_COPY[me.status], fall: undefined }] : []),
+    ...(day === 0 && me.status !== 'fall' ? [{ at: me.since, kind: me.status, title: STATUS_LABEL[me.status], text: STATUS_COPY[me.status], fall: undefined }] : []),
   ].sort((a, b) => b.at - a.at);
 
   return <div className="p-family">
@@ -63,56 +64,69 @@ export function Family({ session, onSignOut }: { session: Session; onSignOut: ()
     </header>
 
     <main className="p-fam-main">
-      {openFall && <div className="p-banner" role="alert">
-        <span className="p-toast__pulse"><Icon name="alert" /></span>
-        <div><strong>A fall was detected at {clock(openFall.at)}</strong><p>Care staff were alerted instantly and are on their way. We'll message you as soon as they've checked on {me.name.split(' ')[0]}.</p></div>
-        <button type="button" className="p-btn p-btn--sm" onClick={() => setClip(openFall)}><Icon name="play" size={14} />View clip</button>
-      </div>}
+      <section className="p-fhero" data-status={me.status}>
+        <div className="p-fhero__top">
+          <div className="p-fhero__who">
+            <span className="p-hero__avatar"><Initials name={me.name} tone={Number(me.id.slice(1))} /><span className="p-hero__ring" /></span>
+            <div>
+              <p className="p-fhero__eyebrow">Your parent</p>
+              <h1>{me.name}</h1>
+              <div className="p-fhero__tags"><span>{me.age} years</span><span>Room {me.room}</span><span>{me.wing} wing</span></div>
+            </div>
+          </div>
+          <div className="p-fhero__status">
+            <StatusPill status={me.status} />
+            <strong>{STATUS_COPY[me.status]}</strong>
+            <small>Since {clock(me.since)} · updated {ago(now - 2000, now)}</small>
+          </div>
+        </div>
 
-      <section className="p-hero" data-status={me.status}>
-        <div className="p-hero__who">
-          <span className="p-hero__avatar"><Initials name={me.name} tone={Number(me.id.slice(1))} /><span className="p-hero__ring" /></span>
-          <div><p className="p-muted">Live status</p><h1>{me.name}</h1><p className="p-muted">{me.age} years · Room {me.room} · {me.wing} wing</p></div>
-        </div>
-        <div className="p-hero__status">
-          <StatusPill status={me.status} />
-          <strong>{STATUS_COPY[me.status]}</strong>
-          <small className="p-muted">Since {clock(me.since)} · updated {ago(now - 2000, now)}</small>
-        </div>
+        {openFall && <div className="p-fhero__alert" role="alert">
+          <span className="p-fhero__alerticon"><Icon name="alert" size={18} /></span>
+          <div><strong>Staff are on their way</strong>
+            <p>Fall detected at {clock(openFall.at)} in room {openFall.room}. We'll message you once they've checked on {me.name.split(' ')[0]}.</p></div>
+          <button type="button" className="p-btn p-btn--sm" onClick={() => setClip(openFall)}><Icon name="play" size={14} />View clip</button>
+        </div>}
+
+        <dl className="p-fhero__stats">
+          <div><dt>Falls today</dt><dd className="num">{todayFalls.length}</dd></div>
+          <div><dt>Avg staff response</dt><dd className="num">{(() => { const a = todayFalls.filter(f => f.acknowledgedAt); return a.length ? duration(Math.round(a.reduce((s, f) => s + responseSeconds(f)!, 0) / a.length)) : '–'; })()}</dd></div>
+          <div><dt>Last fall</dt><dd className="num">{todayFalls.length ? clock(Math.max(...todayFalls.map(f => f.at))) : 'None today'}</dd></div>
+          <div><dt>Monitoring</dt><dd><span className="p-live-dot" />On, 24/7</dd></div>
+        </dl>
       </section>
 
-      <DayStrip value={day} onChange={setDay} counts={dayCounts} />
-
-      <div className="p-fam-grid">
-        <section className="p-card">
-          <header className="p-card__head"><span>{dayLabel(day, true)}</span></header>
-          <div className="p-fam-stats">
-            <div><span>Falls</span><strong className="num">{myFalls.length}</strong></div>
-            <div><span>Staff response</span><strong className="num">{(() => { const a = myFalls.filter(f => f.acknowledgedAt); return a.length ? duration(Math.round(a.reduce((s, f) => s + responseSeconds(f)!, 0) / a.length)) : '–'; })()}</strong></div>
-            <div><span>Monitoring</span><strong>{day === 0 ? 'On' : '24 h'}</strong></div>
+      <div className="p-fgrid">
+        <section className="p-card p-factivity">
+          <header className="p-factivity__head">
+            <div><h2>Activity</h2><p className="p-muted p-small">{dayLabel(day, true)} · {myFalls.length} {myFalls.length === 1 ? 'fall' : 'falls'}</p></div>
+            <div className="p-factivity__dl">
+              <button type="button" className="p-btn p-btn--sm" onClick={() => printReport(myFalls, residents, `Daily summary · ${me.name} · ${dayLabel(day, true)}`)}><Icon name="download" size={14} />PDF</button>
+              <button type="button" className="p-btn p-btn--sm" onClick={() => downloadCsv(myFalls, residents, me.name.split(' ')[0].toLowerCase())}>CSV</button>
+            </div>
+          </header>
+          <div className="p-fdays" role="tablist" aria-label="Choose a day">
+            {dayChipLabels(HISTORY_DAYS).map((l, i) => <button key={i} type="button" role="tab" aria-selected={day === i}
+              data-on={day === i ? 'true' : undefined} onClick={() => setDay(i)}>
+              <span>{l.short}</span><b className="num" data-zero={dayCounts[i] ? undefined : 'true'}>{dayCounts[i]}</b>
+            </button>)}
           </div>
-          <div className="p-quick">
-            <button type="button" className="p-btn p-btn--block" onClick={() => printReport(myFalls, residents, `Daily summary · ${me.name} · ${dayLabel(day, true)}`)}><Icon name="download" size={16} />Download {day === 0 ? "today's" : 'this day’s'} summary</button>
-            <button type="button" className="p-btn p-btn--block p-btn--quiet" onClick={() => downloadCsv(myFalls, residents, me.name.split(' ')[0].toLowerCase())}>Export as CSV</button>
-          </div>
-        </section>
-
-        <section className="p-card p-span-2-md">
-          <header className="p-card__head"><span>Activity</span><span className="p-muted p-small">{dayLabel(day, true)}</span></header>
           <ol className="p-timeline">{timeline.map((e, i) => <li key={i} data-kind={e.kind}>
             <span className="p-timeline__dot" />
             <div><strong>{e.title}</strong><p>{e.text}</p><small className="p-muted num">{clock(e.at)} · {ago(e.at, now)}</small></div>
             {e.fall && e.kind === 'fall' && <button type="button" className="p-btn p-btn--sm" onClick={() => setClip(e.fall!)}><Icon name="play" size={14} />Clip</button>}
           </li>)}
-            {!timeline.length && <li className="p-empty">No falls on this day. Monitoring ran normally.</li>}</ol>
+            {!timeline.length && <li className="p-empty p-fempty"><Icon name="check" />No falls on this day. Monitoring ran normally.</li>}</ol>
         </section>
 
-        <section className="p-card p-span-3">
-          <header className="p-card__head"><span>Messages from the care team {unread > 0 && <span className="p-badge" data-tone="bad">{unread} new</span>}</span>
-            {unread > 0 && <button type="button" className="p-btn p-btn--sm" onClick={() => markRead(me.id)}>Mark all read</button>}</header>
-          <ul className="p-msgs">{inbox.map(m => <li key={m.id} data-unread={!m.read ? 'true' : undefined}>
-            <span className="p-badge" data-tone={m.kind === 'alert' ? 'bad' : m.kind === 'visit' ? 'info' : 'good'}>{m.kind === 'alert' ? 'Fall' : m.kind}</span>
-            <div><strong>{m.title}</strong><p>{m.body}</p><small className="p-muted">{m.from} · {ago(m.at, now)}</small></div></li>)}
+        <section className="p-card p-fmsgs">
+          <header className="p-factivity__head">
+            <div><h2>Care team {unread > 0 && <span className="p-badge" data-tone="bad">{unread} new</span>}</h2><p className="p-muted p-small">Updates and notices</p></div>
+            {unread > 0 && <button type="button" className="p-link p-small" onClick={() => markRead(me.id)}>Mark all read</button>}
+          </header>
+          <ul className="p-fmsgs__list">{inbox.map(m => <li key={m.id} data-unread={!m.read ? 'true' : undefined} data-kind={m.kind}>
+            <span className="p-fmsgs__icon"><Icon name={m.kind === 'alert' ? 'alert' : m.kind === 'visit' ? 'clock' : 'message'} size={16} /></span>
+            <div><strong>{m.title}</strong><p>{m.body}</p><small>{m.from} · {ago(m.at, now)}</small></div></li>)}
             {!inbox.length && <li className="p-empty">No messages yet.</li>}</ul>
         </section>
       </div>
