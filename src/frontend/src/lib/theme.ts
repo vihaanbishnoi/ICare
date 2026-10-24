@@ -17,7 +17,7 @@ function storedTheme(): Theme | null {
 
 /** Follows the system until the person picks a theme, then remembers that choice. */
 export function useTheme() {
-  const [chosen, setChosen] = useState<Theme | null>(storedTheme);
+  const [chosen, setChosen] = useState<Theme | null>(() => storedTheme() ?? 'light');
   const [system, setSystem] = useState<Theme>(() => (systemDark().matches ? 'dark' : 'light'));
   const theme = chosen ?? system;
 

@@ -9,6 +9,8 @@ import {
 } from './data';
 import { downloadCsv, printReport } from './report';
 import { ClipPlayer, Icon, Initials, Logo, Modal, StatusPill } from './ui';
+import { BigAlert, DayStrip, ModelCard, Trend } from './extras';
+import { dayLabel, fallsForDay, HISTORY_DAYS } from './data';
 import { useTheme } from '../lib/theme';
 
 type View = 'overview' | 'live' | 'incidents' | 'reports' | 'families' | 'detection';
@@ -41,7 +43,7 @@ export function Manager({ session, onSignOut }: { session: Session; onSignOut: (
     const fresh = store.falls.filter(f => !seen.current!.has(f.id));
     fresh.forEach(f => seen.current!.add(f.id));
     if (!fresh.length) return;
-    setToasts(t => [...fresh, ...t].slice(0, 3));
+    setToasts(t => [...fresh, ...t].slice(0, 5));
     chime();
     for (const f of fresh) {
       try {
@@ -126,20 +128,12 @@ export function Manager({ session, onSignOut }: { session: Session; onSignOut: (
       </main>
     </div>
 
-    <div className="p-toasts" aria-live="assertive">
-      {toasts.map(f => <div key={f.id} className="p-toast" role="alert">
-        <span className="p-toast__pulse"><Icon name="alert" /></span>
-        <div className="p-toast__body">
-          <strong>Fall detected · Room {f.room}</strong>
-          <span>{resident(f.residentId).name} · {f.wing} wing · {Math.round(f.confidence * 100)}% confidence</span>
-          <div className="p-toast__actions">
-            <button type="button" className="p-btn p-btn--lime p-btn--sm" onClick={() => { dismissToast(f.id); setAttend(f); }}>Respond</button>
-            <button type="button" className="p-btn p-btn--ghost p-btn--sm" onClick={() => { dismissToast(f.id); setClip(f); }}>View clip</button>
-          </div>
-        </div>
-        <button type="button" className="p-iconbtn p-iconbtn--dark" aria-label="Dismiss" onClick={() => dismissToast(f.id)}><Icon name="close" size={16} /></button>
-      </div>)}
-    </div>
+    {toasts[0] && !clip && !attend && (() => { const f = toasts[0]; return <BigAlert kicker="Fall detected"
+      place={`Room ${f.room}`} detail={`${resident(f.residentId).name} · ${f.wing} wing`}
+      time={`${clock(f.at)} · ${ago(f.at, nowT)}`} extra={`${Math.round(f.confidence * 100)}% confidence`}
+      primary="Respond now" onPrimary={() => { dismissToast(f.id); setAttend(f); }}
+      secondary="View 5s clip" onSecondary={() => { dismissToast(f.id); setClip(f); }}
+      onDismiss={() => dismissToast(f.id)} more={toasts.length - 1} />; })()}
 
     {clip && <Modal title={`Fall clip · Room ${clip.room}`} onClose={() => setClip(null)} wide>
       <ClipPlayer seed={clip.clipSeed} room={clip.room} at={clip.at} label={`Five second clip of the fall in room ${clip.room}`} />
@@ -369,7 +363,10 @@ function Incidents({ falls, residents, now, onClip, onAttend }: {
 
 /* ---------------- Reports ---------------- */
 
-function Reports({ falls, residents }: { falls: FallEvent[]; residents: Resident[] }) {
+function Reports({ falls: todayFalls, residents }: { falls: FallEvent[]; residents: Resident[] }) {
+  const [day, setDay] = useState(0);
+  const counts = Array.from({ length: HISTORY_DAYS }, (_, i) => fallsForDay(i, todayFalls).length);
+  const falls = fallsForDay(day, todayFalls);
   const s = dayStats(falls);
   const rooms = [...s.byRoom].sort((a, b) => b[1] - a[1]);
   const max = Math.max(1, ...rooms.map(r => r[1]));
@@ -379,16 +376,22 @@ function Reports({ falls, residents }: { falls: FallEvent[]; residents: Resident
     return [...m].sort((a, b) => b[1] - a[1]);
   }, [falls]);
   const peak = s.byHour.indexOf(Math.max(...s.byHour));
-  const title = `Daily fall report · ${new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}`;
+  const date = new Date(Date.now() - day * 86_400_000);
+  const title = `Daily fall report · ${date.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}`;
 
   return <div className="p-stack">
     <div className="p-pagehead">
-      <div><h2>Daily report</h2><p className="p-muted">{new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · updates live until midnight</p></div>
+      <div><h2>Daily report · {dayLabel(day)}</h2><p className="p-muted">{date.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}{day === 0 ? ' · updates live until midnight' : ' · closed day'}</p></div>
       <div className="p-filters">
         <button type="button" className="p-btn" onClick={() => downloadCsv(falls, residents)}><Icon name="download" size={16} />CSV</button>
         <button type="button" className="p-btn p-btn--primary" onClick={() => printReport(falls, residents, title)}><Icon name="report" size={16} />Download PDF</button>
       </div>
     </div>
+    <DayStrip value={day} onChange={setDay} counts={counts} />
+    <section className="p-card">
+      <header className="p-card__head"><span>Falls per day · last 7 days</span><span className="p-muted p-small">Click a bar to open that day</span></header>
+      <Trend counts={counts} value={day} onChange={setDay} />
+    </section>
     <div className="p-kpis">
       {[['Total falls', String(s.total)], ['Open alerts', String(s.open)], ['Rooms affected', String(s.byRoom.size)],
         ['Avg response', s.avgResponse === null ? '–' : duration(s.avgResponse)], ['Peak hour', s.total ? `${String(peak).padStart(2, '0')}:00` : '–']].map(([l, v]) =>
@@ -402,7 +405,7 @@ function Reports({ falls, residents }: { falls: FallEvent[]; residents: Resident
       </section>
       <section className="p-card">
         <header className="p-card__head"><span>Falls by hour</span></header>
-        <HourBars hours={s.byHour.slice(0, new Date().getHours() + 1)} />
+        <HourBars hours={day === 0 ? s.byHour.slice(0, new Date().getHours() + 1) : s.byHour} />
       </section>
       <section className="p-card">
         <header className="p-card__head"><span>Residents with falls</span></header>
@@ -447,6 +450,7 @@ function Detection() {
   return <div className="p-stack p-detection">
     <div className="p-pagehead"><div><h2>Camera detection</h2><p className="p-muted">Run the on-device fall detector on a camera or recorded video.</p></div>
       <ModeTabs mode={mode} onChange={setMode} prefix="portal" label="Detection mode" /></div>
+    <ModelCard />
     <section role="tabpanel" id="portal-panel-live" aria-labelledby="portal-tab-live" hidden={mode !== 'live'}>{mode === 'live' && <LivePanel />}</section>
     <section role="tabpanel" id="portal-panel-video" aria-labelledby="portal-tab-video" hidden={mode !== 'video'}><UploadPanel /></section>
   </div>;

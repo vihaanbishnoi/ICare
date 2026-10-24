@@ -1,8 +1,9 @@
 /** Family portal: one resident's live status, today's events, care-team messages and a daily summary. */
 import { useEffect, useRef, useState } from 'react';
-import { ago, clock, duration, markRead, responseSeconds, STATUS_LABEL, useNow, useStore, type FallEvent, type Session } from './data';
+import { ago, clock, dayLabel, duration, fallsForDay, HISTORY_DAYS, markRead, responseSeconds, STATUS_LABEL, useNow, useStore, type FallEvent, type Session } from './data';
 import { downloadCsv, printReport } from './report';
 import { ClipPlayer, Icon, Initials, Logo, Modal, StatusPill } from './ui';
+import { BigAlert, DayStrip } from './extras';
 
 const STATUS_COPY = {
   active: 'Up and moving around',
@@ -15,8 +16,12 @@ export function Family({ session, onSignOut }: { session: Session; onSignOut: ()
   const { residents, falls, messages } = useStore();
   const now = useNow(1000);
   const me = residents.find(r => r.id === session.residentId)!;
-  const myFalls = falls.filter(f => f.residentId === me.id);
-  const openFall = myFalls.find(f => !f.acknowledgedAt);
+  const todayFalls = falls.filter(f => f.residentId === me.id);
+  const [day, setDay] = useState(0);
+  const dayCounts = Array.from({ length: HISTORY_DAYS }, (_, i) => fallsForDay(i, falls).filter(f => f.residentId === me.id).length);
+  const myFalls = day === 0 ? todayFalls : fallsForDay(day, falls).filter(f => f.residentId === me.id);
+  const [bigFall, setBigFall] = useState<FallEvent | null>(null);
+  const openFall = todayFalls.find(f => !f.acknowledgedAt);
   const inbox = messages.filter(m => m.residentId === me.id || m.residentId === 'all');
   const unread = inbox.filter(m => !m.read).length;
   const [clip, setClip] = useState<FallEvent | null>(null);
@@ -25,12 +30,12 @@ export function Family({ session, onSignOut }: { session: Session; onSignOut: ()
   // Tell the family as soon as something new arrives for their parent.
   const seen = useRef<Set<string> | null>(null);
   useEffect(() => {
-    const ids = [...myFalls.map(f => f.id), ...inbox.map(m => m.id)];
+    const ids = [...todayFalls.map(f => f.id), ...inbox.map(m => m.id)];
     if (!seen.current) { seen.current = new Set(ids); return; }
-    const freshFall = myFalls.find(f => !seen.current!.has(f.id));
+    const freshFall = todayFalls.find(f => !seen.current!.has(f.id));
     const freshMsg = inbox.find(m => !seen.current!.has(m.id));
     ids.forEach(id => seen.current!.add(id));
-    if (freshFall) setToast(`A fall was detected in room ${freshFall.room}. Staff are responding.`);
+    if (freshFall) setBigFall(freshFall);
     else if (freshMsg) setToast(`New message from the care team: ${freshMsg.title}`);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [falls, messages]);
@@ -41,7 +46,7 @@ export function Family({ session, onSignOut }: { session: Session; onSignOut: ()
       { at: f.at, kind: 'fall', title: 'Fall detected', text: `Room ${f.room}. Staff alerted automatically.`, fall: f },
       ...(f.acknowledgedAt ? [{ at: f.acknowledgedAt, kind: 'ok', title: 'Staff attended', text: `${f.note ?? 'Checked on'} · within ${duration(responseSeconds(f)!)}`, fall: f }] : []),
     ]),
-    { at: me.since, kind: me.status, title: STATUS_LABEL[me.status], text: STATUS_COPY[me.status], fall: undefined },
+    ...(day === 0 ? [{ at: me.since, kind: me.status, title: STATUS_LABEL[me.status], text: STATUS_COPY[me.status], fall: undefined }] : []),
   ].sort((a, b) => b.at - a.at);
 
   return <div className="p-family">
@@ -76,27 +81,30 @@ export function Family({ session, onSignOut }: { session: Session; onSignOut: ()
         </div>
       </section>
 
+      <DayStrip value={day} onChange={setDay} counts={dayCounts} />
+
       <div className="p-fam-grid">
         <section className="p-card">
-          <header className="p-card__head"><span>Today</span></header>
+          <header className="p-card__head"><span>{dayLabel(day, true)}</span></header>
           <div className="p-fam-stats">
             <div><span>Falls</span><strong className="num">{myFalls.length}</strong></div>
             <div><span>Staff response</span><strong className="num">{(() => { const a = myFalls.filter(f => f.acknowledgedAt); return a.length ? duration(Math.round(a.reduce((s, f) => s + responseSeconds(f)!, 0) / a.length)) : '–'; })()}</strong></div>
-            <div><span>Monitoring</span><strong>On</strong></div>
+            <div><span>Monitoring</span><strong>{day === 0 ? 'On' : '24 h'}</strong></div>
           </div>
           <div className="p-quick">
-            <button type="button" className="p-btn p-btn--block" onClick={() => printReport(myFalls, residents, `Daily summary · ${me.name}`)}><Icon name="download" size={16} />Download today's summary</button>
+            <button type="button" className="p-btn p-btn--block" onClick={() => printReport(myFalls, residents, `Daily summary · ${me.name} · ${dayLabel(day, true)}`)}><Icon name="download" size={16} />Download {day === 0 ? "today's" : 'this day’s'} summary</button>
             <button type="button" className="p-btn p-btn--block p-btn--quiet" onClick={() => downloadCsv(myFalls, residents, me.name.split(' ')[0].toLowerCase())}>Export as CSV</button>
           </div>
         </section>
 
         <section className="p-card p-span-2-md">
-          <header className="p-card__head"><span>Activity</span><span className="p-muted p-small">Today</span></header>
+          <header className="p-card__head"><span>Activity</span><span className="p-muted p-small">{dayLabel(day, true)}</span></header>
           <ol className="p-timeline">{timeline.map((e, i) => <li key={i} data-kind={e.kind}>
             <span className="p-timeline__dot" />
             <div><strong>{e.title}</strong><p>{e.text}</p><small className="p-muted num">{clock(e.at)} · {ago(e.at, now)}</small></div>
             {e.fall && e.kind === 'fall' && <button type="button" className="p-btn p-btn--sm" onClick={() => setClip(e.fall!)}><Icon name="play" size={14} />5s clip</button>}
-          </li>)}</ol>
+          </li>)}
+            {!timeline.length && <li className="p-empty">No falls on this day. Monitoring ran normally.</li>}</ol>
         </section>
 
         <section className="p-card p-span-3">
@@ -113,6 +121,13 @@ export function Family({ session, onSignOut }: { session: Session; onSignOut: ()
     {toast && <div className="p-toasts" aria-live="polite"><div className="p-toast"><span className="p-toast__pulse"><Icon name="bell" /></span>
       <div className="p-toast__body"><strong>{toast}</strong></div>
       <button type="button" className="p-iconbtn p-iconbtn--dark" aria-label="Dismiss" onClick={() => setToast(null)}><Icon name="close" size={16} /></button></div></div>}
+
+    {bigFall && !clip && <BigAlert kicker="Fall detected" place={me.name.split(' ')[0]}
+      detail={`A fall was detected in room ${bigFall.room}. Care staff were alerted instantly and are on their way.`}
+      time={`${clock(bigFall.at)} · ${ago(bigFall.at, now)}`} extra={`Room ${bigFall.room} · ${bigFall.wing} wing`}
+      primary="OK, keep me updated" onPrimary={() => setBigFall(null)}
+      secondary="View 5s clip" onSecondary={() => { const f = bigFall; setBigFall(null); setClip(f); }}
+      onDismiss={() => setBigFall(null)} />}
 
     {clip && <Modal title={`Fall clip · ${clock(clip.at)}`} onClose={() => setClip(null)} wide>
       <ClipPlayer seed={clip.clipSeed} room={clip.room} at={clip.at} label="Five second clip of the detected fall" />

@@ -5,6 +5,7 @@ import { Family } from './Family';
 import { Login } from './Login';
 import { Manager } from './Manager';
 import './portal.css';
+import './extras.css';
 
 export function Portal() {
   const [session, setSession] = useState<Session | null>(loadSession);

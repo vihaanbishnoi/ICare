@@ -11,8 +11,9 @@
       // Apply a remembered theme before first paint; otherwise CSS follows the system.
       try {
         var theme = localStorage.getItem('icare-theme');
-        if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
-      } catch (e) {}
+        // Light is the default; dark only when the person chose it.
+        document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light';
+      } catch (e) { document.documentElement.dataset.theme = 'light'; }
     </script>
   </head>
   <body>

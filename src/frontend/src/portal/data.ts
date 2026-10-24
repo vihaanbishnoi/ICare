@@ -209,3 +209,43 @@ export function dayStats(falls: FallEvent[]) {
   const avgResponse = acked.length ? Math.round(acked.reduce((s, f) => s + responseSeconds(f)!, 0) / acked.length) : null;
   return { total: falls.length, open: falls.length - acked.length, byRoom, byHour, avgResponse };
 }
+
+/* ---------- date-wise history ---------- */
+
+export const DAY = 24 * HOUR;
+export const HISTORY_DAYS = 7;
+
+/** Day start (local midnight) for `offset` days before today. */
+export function dayStart(offset: number) {
+  const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - offset); return d.getTime();
+}
+
+const pastCache = new Map<number, FallEvent[]>();
+/** Demo history for earlier days: deterministic per calendar day, all attended. */
+export function pastFalls(offset: number): FallEvent[] {
+  const start = dayStart(offset);
+  const cached = pastCache.get(start); if (cached) return cached;
+  const r = rand((Math.floor(start / DAY) * 2654435761) % 2147483647 || 1);
+  for (let i = 0; i < 5; i++) r(); // decorrelate neighbouring days
+  const weights = [3, 1, 4, 1, 1, 5, 1, 2];
+  const pool = RESIDENTS_SEED.flatMap((res, i) => Array(weights[i]).fill(res));
+  const count = 4 + Math.floor(r() * 9);
+  const list = Array.from({ length: count }, (_, i) => {
+    const res = pool[Math.floor(r() * pool.length)];
+    const at = start + Math.floor(r() * (DAY - 10 * MIN));
+    const ack = at + Math.floor((35 + r() * 280) * 1000);
+    const notes = ['No injury, helped up', 'Minor injury, first aid given', 'Nurse assessment requested', 'False alarm'];
+    return { id: `f-${start}-${i}`, residentId: res.id, room: res.room, wing: res.wing, at, confidence: 0.6 + r() * 0.38,
+      acknowledgedAt: ack, acknowledgedBy: 'Nurse on duty', note: notes[Math.floor(r() * notes.length)], clipSeed: Math.floor(r() * 1e6) };
+  }).sort((a, b) => b.at - a.at);
+  pastCache.set(start, list);
+  return list;
+}
+
+export const fallsForDay = (offset: number, today: FallEvent[]) => offset === 0 ? today : pastFalls(offset);
+
+export function dayLabel(offset: number, long = false) {
+  if (offset === 0) return 'Today';
+  if (offset === 1) return 'Yesterday';
+  return new Date(dayStart(offset)).toLocaleDateString([], long ? { weekday: 'long', day: 'numeric', month: 'long' } : { weekday: 'short' });
+}
