@@ -1,10 +1,13 @@
 import { useLiveCamera } from '../hooks/useLiveCamera';
+import { useRoomChoice } from '../hooks/useRoomChoice';
+import { RoomPicker } from './RoomPicker';
 import { ConfidenceChart } from './ConfidenceChart';
 import { IncidentTable, Readout } from './ResultsPanel';
 import { personColor, personName } from '../lib/people';
 
 export function LivePanel() {
   const live = useLiveCamera();
+  const [room, setRoom] = useRoomChoice();
   const { frame, phase, videoRef, canvasRef } = live;
   const active = phase === 'starting' || phase === 'running';
   // Highest current reading among people in view, each from their own latest window.
@@ -31,8 +34,9 @@ export function LivePanel() {
           <p>Runs on this computer's CPU. Camera images are not saved, except a short clip around each detected fall, kept for 24 hours.</p>
         </div>
       </div>
+      <RoomPicker value={room} onChange={setRoom} disabled={active || phase === 'stopping'} />
       <div className="controlbar__actions">
-        <button type="button" className="button button--primary" onClick={() => void live.start()} disabled={active || phase === 'stopping'}>Start live detection</button>
+        <button type="button" className="button button--primary" onClick={() => void live.start(room)} disabled={active || phase === 'stopping'}>Start live detection</button>
         <button type="button" className="button" onClick={() => void live.stop()} disabled={!active}>Stop</button>
       </div>
     </div>
@@ -100,7 +104,7 @@ export function LivePanel() {
             <h2>Incident history</h2>
             <button type="button" className="button button--small" onClick={() => void live.refreshHistory()}>Refresh</button>
           </div>
-          <p className="hint">Private to this browser session. Times and probabilities are kept, plus a clip of about 4 seconds for each fall.</p>
+          <p className="hint">Private to this browser session. Times and probabilities are kept, plus a clip of about 5 seconds for each fall.</p>
           {live.incidents.length > 0 && <>
             <h3>This session</h3>
             <IncidentTable rows={live.incidents.map(item => ({

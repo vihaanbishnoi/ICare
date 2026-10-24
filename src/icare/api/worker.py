@@ -194,11 +194,18 @@ class JobRunner:
             self.store.transition(job_id, ("running",), state="cancelled", progress=None)
             return
 
+        room = job.get("room")
+        locations: dict[str, dict[str, Any]] = {}
         if self.clips is not None and incidents:
             # Cut before the result is written so each incident carries its clip_id.
+            try:
+                locations = self.clips.locate_falls(
+                    poses, incidents, int(summary["frame_width"]), int(summary["frame_height"]))
+            except (KeyError, TypeError, ValueError):
+                log.exception("Could not locate falls for job %s", job_id)
             self.clips.cut_from_video(
                 job["owner"], job_id, Path(job["media_path"]), incidents,
-                _number(summary.get("duration_seconds")), cancel_event,
+                _number(summary.get("duration_seconds")), cancel_event, room=room, locations=locations,
             )
             if cancel_event.is_set():
                 self._drop_clips(job_id)
@@ -228,6 +235,15 @@ class JobRunner:
         ):
             self.store.clear_incidents(job_id)  # cancelled during the final write
             self._drop_clips(job_id)
+            return
+        if self.clips is not None and room:
+            # Only completed jobs feed the room's danger zone, which outlives the clips.
+            try:
+                self.clips.record_locations(room, "upload", job_id, incidents, locations)
+                self.clips.reference_photo_from_video(
+                    room, Path(job["media_path"]), [pose["timestamp_seconds"] for pose in poses])
+            except Exception:  # noqa: BLE001 - the finished job must not fail because of this
+                log.exception("Could not update the danger zone of room %s", room)
 
     def _drop_clips(self, job_id: str) -> None:
         if self.clips is not None:

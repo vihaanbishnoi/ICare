@@ -182,11 +182,19 @@ export function syncDetectorClips(clips: Clip[]) {
     const at = Date.parse(c.created_at_utc);
     const id = `clip-${c.clip_id}`;
     if (known.has(id) || !Number.isFinite(at) || at < from) return [];
-    return [{ id, residentId: DETECTOR_ID, room: DETECTOR.room, wing: DETECTOR.wing, at, confidence: c.confidence,
+    // A fall from a camera started for a room belongs to that room; otherwise to the detector room.
+    const resident = c.room ? state.residents.find(r => r.room === c.room) : undefined;
+    return [{ id, residentId: resident?.id ?? DETECTOR_ID, room: resident?.room ?? DETECTOR.room,
+      wing: resident?.wing ?? DETECTOR.wing, at, confidence: c.confidence,
       acknowledgedAt: null, acknowledgedBy: null, note: null, clipSeed: 0, clipId: c.clip_id }];
   });
   if (!added.length) return;
-  commit({ ...state, falls: [...added, ...state.falls].sort((a, b) => b.at - a.at) });
+  const recent = added.filter(f => f.residentId !== DETECTOR_ID && now() - f.at < 2 * MIN);
+  commit({ ...state, falls: [...added, ...state.falls].sort((a, b) => b.at - a.at),
+    residents: state.residents.map(r => {
+      const latest = recent.find(f => f.residentId === r.id);
+      return latest ? { ...r, status: 'fall', since: latest.at } : r;
+    }) });
 }
 
 /** Light background drift so statuses look live. Only one tab (the manager) drives it. */

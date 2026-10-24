@@ -2,6 +2,8 @@
 import { useCallback, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { startUploadJob } from '../api/client';
 import { useJobPoller } from '../hooks/useJobPoller';
+import { useRoomChoice } from '../hooks/useRoomChoice';
+import { RoomPicker } from './RoomPicker';
 import { ConfidenceChart } from './ConfidenceChart';
 import { ResultsSide } from './ResultsPanel';
 import { VideoPlayer } from './VideoPlayer';
@@ -18,6 +20,7 @@ export function UploadPanel() {
   const [dragOver, setDragOver] = useState(false);
   const [videoTime, setVideoTime] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [room, setRoom] = useRoomChoice();
 
   const { job, result, error, retryable, retry, cancel, cancelling } = useJobPoller(jobId);
   const phase: Phase = jobId ? (result ? 'complete' : error ? 'error' : 'polling') : localPhase;
@@ -41,7 +44,7 @@ export function UploadPanel() {
     setErrorMsg(null);
     setVideoTime(0);
     try {
-      const created = await startUploadJob(file);
+      const created = await startUploadJob(file, room || undefined);
       setJobId(created.job_id);
       setPhase('polling');
     } catch (e: unknown) {
@@ -59,7 +62,7 @@ export function UploadPanel() {
       }
       setPhase('error');
     }
-  }, []);
+  }, [room]);
 
   function onInputChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -98,6 +101,7 @@ export function UploadPanel() {
           <p>{fileName || `MP4 up to ${MAX_MB} MB and 60 seconds, analyzed on this computer.`}</p>
         </div>
       </div>
+      <RoomPicker value={room} onChange={setRoom} disabled={phase !== 'idle'} />
       <div className="controlbar__actions">
         {phase === 'idle' && <button type="button" className="button button--primary" onClick={choose}>Choose MP4 file</button>}
         {(phase === 'uploading' || phase === 'polling') && <button type="button" className="button" onClick={() => void cancel()}

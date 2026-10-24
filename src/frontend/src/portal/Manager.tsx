@@ -8,8 +8,10 @@ import {
   responseSeconds, sendMessage, syncDetectorClips, useNow, useSimulation, useStore, wingLabel,
   type FallEvent, type Resident, type Session,
 } from './data';
+import { deleteRoomFall } from '../api/client';
 import { useClipList } from '../hooks/useClips';
 import type { ClipList } from '../types';
+import { DangerZones } from './DangerZones';
 import { downloadCsv, printReport } from './report';
 import { FallClip, Icon, Initials, Logo, Modal, StatusPill } from './ui';
 import { BigAlert, DayStrip, Trend } from './extras';
@@ -20,11 +22,12 @@ import { useTheme } from '../lib/theme';
 import { fetchDailyLogs, fetchDailySummary } from '../api/client';
 import type { DailyLogEntry, DailySummaryResponse } from '../types';
 
-type View = 'overview' | 'live' | 'incidents' | 'reports' | 'families' | 'detection';
+type View = 'overview' | 'live' | 'incidents' | 'zones' | 'reports' | 'families' | 'detection';
 const NAV: { id: View; label: string; icon: string }[] = [
   { id: 'overview', label: 'Overview', icon: 'grid' },
   { id: 'live', label: 'Live monitor', icon: 'live' },
   { id: 'incidents', label: 'Fall incidents', icon: 'alert' },
+  { id: 'zones', label: 'Danger zones', icon: 'room' },
   { id: 'reports', label: 'Daily reports', icon: 'report' },
   { id: 'families', label: 'Family messages', icon: 'message' },
 ];
@@ -136,6 +139,7 @@ export function Manager({ session, onSignOut }: { session: Session; onSignOut: (
         {view === 'live' && <LiveMonitor residents={store.residents} falls={store.falls} now={nowT} onClip={setClip} onAttend={setAttend} onNotify={id => setNotify({ residentId: id })} />}
         {view === 'incidents' && <Incidents falls={store.falls} residents={store.residents} now={nowT} onClip={setClip} onAttend={setAttend}
           clipInfo={clipList} clipsUnavailable={clipsUnavailable} />}
+        {view === 'zones' && <DangerZones />}
         {view === 'reports' && <Reports falls={store.falls} residents={store.residents} />}
         {view === 'families' && <Families residents={store.residents} onNotify={id => setNotify({ residentId: id })} />}
         {view === 'detection' && <Detection />}
@@ -684,7 +688,12 @@ function AttendDialog({ fall, resident, by, onClose, onNotify }: { fall: FallEve
     </div>
     <div className="p-modal__foot">
       <button type="button" className="p-btn" onClick={onClose}>Cancel</button>
-      <button type="button" className="p-btn p-btn--primary" onClick={() => { acknowledgeFall(fall.id, by, note); onClose(); if (tell && resident.family) onNotify(); }}><Icon name="check" size={16} />Mark attended</button>
+      <button type="button" className="p-btn p-btn--primary" onClick={() => {
+        acknowledgeFall(fall.id, by, note); onClose();
+        // A false alarm must not count towards the room's danger zone.
+        if (fall.clipId && note === 'False alarm') void deleteRoomFall(fall.room, fall.clipId).catch(() => undefined);
+        if (tell && resident.family) onNotify();
+      }}><Icon name="check" size={16} />Mark attended</button>
     </div>
   </Modal>;
 }

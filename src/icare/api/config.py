@@ -36,8 +36,8 @@ class Settings:
     # evicted first) and expiry, independent of upload storage.
     max_clip_storage_bytes: int = 1024 * 1024 * 1024
     clip_retention_seconds: float = 24 * 3600.0
-    clip_pre_seconds: float = 3.0   # before the detection timestamp
-    clip_post_seconds: float = 1.0  # after it; pre + post is the ~4 s clip
+    clip_pre_seconds: float = 4.0   # before the detection: the model's own 4 s window, so the fall is inside
+    clip_post_seconds: float = 1.0  # after it; pre + post is the ~5 s clip
     max_clips_per_job: int = 10
 
     def __post_init__(self) -> None:
@@ -78,7 +78,7 @@ class Settings:
             result_reserve_bytes=int(float(env.get('ICARE_RESULT_BUDGET_MB', 16)) * 1024 * 1024),
             max_clip_storage_bytes=int(float(env.get('ICARE_MAX_CLIP_STORAGE_MB', 1024)) * 1024 * 1024),
             clip_retention_seconds=float(env.get('ICARE_CLIP_RETENTION_HOURS', 24)) * 3600,
-            clip_pre_seconds=float(env.get('ICARE_CLIP_PRE_SECONDS', 3)),
+            clip_pre_seconds=float(env.get('ICARE_CLIP_PRE_SECONDS', 4)),
             clip_post_seconds=float(env.get('ICARE_CLIP_POST_SECONDS', 1)),
             max_clips_per_job=int(env.get('ICARE_MAX_CLIPS_PER_JOB', 10)),
         )

@@ -247,8 +247,8 @@ class ApiClipTests(unittest.TestCase):
         self.assertEqual((clip.clip_id, clip.status, clip.source_kind, clip.source_id),
                          (incident.clip_id, "ready", "upload", job["job_id"]))
         self.assertAlmostEqual(clip.detected_at_seconds, incident.detected_at_seconds)
-        self.assertAlmostEqual(clip.clip_start_seconds, 2.0, places=1)
-        self.assertAlmostEqual(clip.duration_seconds, 4.0, delta=0.1)
+        self.assertAlmostEqual(clip.clip_start_seconds, 1.0, places=1)   # the model's 4 s window before the fall
+        self.assertAlmostEqual(clip.duration_seconds, 5.0, delta=0.1)
         self.assertGreater(clip.expires_at_utc, clip.created_at_utc)
         self.assertEqual(listing.storage_cap_bytes, 1024 ** 3)
         self.assertEqual(listing.retention_seconds, 86400)
@@ -256,7 +256,9 @@ class ApiClipTests(unittest.TestCase):
 
         video = self.client.get(clip.video_url)
         self.assertEqual((video.status_code, video.headers["content-type"]), (200, clip.media_type))
-        self.assertEqual(len(video.content), clip.size_bytes)
+        picture = self.client.get(clip.snapshot_url)
+        self.assertEqual((picture.status_code, picture.headers["content-type"]), (200, "image/jpeg"))
+        self.assertEqual(len(video.content) + len(picture.content), clip.size_bytes)  # both count towards the cap
         self.assertEqual(self.client.get(clip.video_url, headers={"Range": "bytes=0-9"}).status_code, 206)
         self.assertEqual(video.headers["cache-control"], "private, no-store")
 
@@ -272,7 +274,7 @@ class ApiClipTests(unittest.TestCase):
     def test_deleting_the_job_deletes_its_clips_and_files(self):
         job = self.analyse()
         clips_dir = self.tmp / "data" / "clips"
-        self.assertEqual(len(list(clips_dir.iterdir())), 1)
+        self.assertEqual(len(list(clips_dir.iterdir())), 2)   # the video and the picture of the fall
         self.assertEqual(self.client.delete(f"/api/v1/jobs/{job['job_id']}").status_code, 204)
         self.assertEqual(self.client.get("/api/v1/clips").json()["clips"], [])
         self.assertEqual(list(clips_dir.iterdir()), [])
@@ -309,7 +311,7 @@ class ApiClipTests(unittest.TestCase):
         settings = Settings()
         self.assertEqual(settings.max_clip_storage_bytes, 1024 ** 3)
         self.assertEqual(settings.clip_retention_seconds, 24 * 3600)
-        self.assertEqual(settings.clip_pre_seconds + settings.clip_post_seconds, 4.0)
+        self.assertEqual((settings.clip_pre_seconds, settings.clip_post_seconds), (4.0, 1.0))
         with self.assertRaises(ValueError):
             Settings(max_clip_storage_bytes=0)
 
@@ -473,7 +475,8 @@ class LiveHttpClipTests(unittest.TestCase):
             self.assertAlmostEqual(clip.clip_start_seconds, 0.1, places=2)   # session began less than 3 s earlier
             self.assertGreater(clip.duration_seconds, 1.5)
             video = client.get(clip.video_url)
-            self.assertEqual((video.status_code, len(video.content)), (200, clip.size_bytes))
+            self.assertEqual(video.status_code, 200)
+            self.assertLessEqual(len(video.content), clip.size_bytes)   # size also counts the picture
             history = client.get("/api/v1/live/history").json()["sessions"][0]["incidents"][0]
             self.assertEqual(history["clip_id"], incident.clip_id)
             client.delete(f"/api/v1/live/sessions/{session}")
