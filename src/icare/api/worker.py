@@ -16,7 +16,7 @@ from typing import Any, Mapping
 from pydantic import ValidationError
 
 from icare.api.engine import Engine
-from icare.api.incidents import IncidentTracker
+from icare.api.incidents import PersonIncidents
 from icare.api.results import ResultTooLarge, build_result, write_outputs
 from icare.api.schemas import Pose, Prediction
 from icare.api.store import Store, utc_now
@@ -36,13 +36,14 @@ class InvalidEngineOutput(Exception):
 class JobRunner:
     def __init__(
         self, store: Store, engine: Engine | None, jobs_dir: Path, timeout_seconds: float,
-        max_result_bytes: int = 5 * 1024 * 1024,
+        max_result_bytes: int = 16 * 1024 * 1024, fall_confirmations: int = 1,
     ) -> None:
         self.store = store
         self.engine = engine
         self.jobs_dir = jobs_dir
         self.timeout_seconds = timeout_seconds
         self.max_result_bytes = max_result_bytes
+        self.fall_confirmations = fall_confirmations
         self._pending: deque[str] = deque()
         self._wake = threading.Condition()
         self._cancel_events: dict[str, threading.Event] = {}
@@ -125,7 +126,7 @@ class JobRunner:
         timer = threading.Timer(self.timeout_seconds, on_timeout)
         timer.daemon = True
 
-        tracker = IncidentTracker()
+        incidents_by_person = PersonIncidents(confirmations=self.fall_confirmations)
         predictions: list[dict[str, Any]] = []
         poses: list[dict[str, Any]] = []
         incidents: list[dict[str, Any]] = []
@@ -136,10 +137,14 @@ class JobRunner:
         def on_prediction(record: Mapping[str, Any]) -> None:
             prediction = _validated(Prediction, record)
             predictions.append(prediction)
-            if tracker.observe(prediction["fall_probability"]):
+            # Each person has an independent incident rule; legacy engines without
+            # track IDs are treated as one person (0), the previous behaviour.
+            person = prediction["track_id"] or 0
+            if incidents_by_person.observe(person, prediction["fall_probability"]):
                 incident = {
                     "incident_id": secrets.token_urlsafe(8),
                     "job_id": job_id,
+                    "track_id": prediction["track_id"],
                     "detected_at_seconds": prediction["timestamp_seconds"],
                     "confidence": prediction["fall_probability"],
                     "status": "detected",

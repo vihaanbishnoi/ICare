@@ -13,7 +13,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Sequence
 
-from icare.api.incidents import IncidentTracker
+from icare.api.incidents import PersonIncidents
 
 
 @dataclass
@@ -210,7 +210,7 @@ class BenchmarkHarness:
         """Run real inference engine on one clip using icare.inference.engine interface."""
         poses: List[Dict[str, Any]] = []
         predictions: List[Dict[str, Any]] = []
-        tracker = IncidentTracker()
+        tracker = PersonIncidents()
         incidents = 0
         first_incident_ts: Optional[float] = None
 
@@ -218,7 +218,7 @@ class BenchmarkHarness:
             nonlocal incidents, first_incident_ts
             predictions.append(pred)
             prob = pred.get("fall_probability", 0.0)
-            if tracker.observe(prob):
+            if tracker.observe(pred.get("track_id") or 0, prob):
                 incidents += 1
                 if first_incident_ts is None:
                     first_incident_ts = pred.get("timestamp_seconds")

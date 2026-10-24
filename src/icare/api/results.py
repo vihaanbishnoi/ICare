@@ -13,6 +13,7 @@ from icare.api.schemas import Result
 
 PREFIX = "/api/v1"
 CSV_FIELDS = [
+    "track_id",
     "timestamp_seconds",
     "fall_probability",
     "window_start_seconds",
@@ -76,18 +77,19 @@ class ResultTooLarge(ValueError):
     pass
 
 
-def write_outputs(job_dir: Path, result: dict[str, Any], max_bytes: int = 5 * 1024 * 1024) -> None:
+def write_outputs(job_dir: Path, result: dict[str, Any], max_bytes: int = 16 * 1024 * 1024) -> None:
     """Write result.json, report.json and report.csv inside the job folder."""
 
     result_json = json.dumps(result, allow_nan=False)
     report_json = json.dumps(result, indent=2, allow_nan=False)
-    incident_at = {i["detected_at_seconds"]: i["incident_id"] for i in result["incidents"]}
+    # Several people can have predictions at the same timestamp: key by person too.
+    incident_at = {(i.get("track_id"), i["detected_at_seconds"]): i["incident_id"] for i in result["incidents"]}
     with io.StringIO(newline='') as file:
         writer = csv.DictWriter(file, fieldnames=CSV_FIELDS, extrasaction="ignore")
         writer.writeheader()
         for prediction in result["predictions"]:
             row = dict(prediction)
-            row["incident_id"] = incident_at.get(prediction["timestamp_seconds"], "")
+            row["incident_id"] = incident_at.get((prediction.get("track_id"), prediction["timestamp_seconds"]), "")
             writer.writerow(row)
         report_csv = file.getvalue()
     if sum(len(value.encode('utf-8')) for value in (result_json, report_json, report_csv)) > max_bytes:

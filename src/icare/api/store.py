@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS incidents (
     detected_at_seconds REAL NOT NULL,
     confidence REAL NOT NULL,
     status TEXT NOT NULL,
-    created_at_utc TEXT NOT NULL
+    created_at_utc TEXT NOT NULL,
+    track_id INTEGER
 );
 CREATE TABLE IF NOT EXISTS admissions (
     job_id TEXT PRIMARY KEY,
@@ -50,7 +51,8 @@ CREATE TABLE IF NOT EXISTS live_sessions (
 CREATE TABLE IF NOT EXISTS live_incidents (
     incident_id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL REFERENCES live_sessions(session_id) ON DELETE CASCADE,
-    detected_at_seconds REAL NOT NULL, confidence REAL NOT NULL, created_at_utc TEXT NOT NULL
+    detected_at_seconds REAL NOT NULL, confidence REAL NOT NULL, created_at_utc TEXT NOT NULL,
+    track_id INTEGER
 );
 """
 
@@ -68,6 +70,11 @@ class Store:
         with self._lock:
             self._db.execute("PRAGMA foreign_keys = ON")
             self._db.executescript(SCHEMA)
+            # Databases created before multi-person tracking lack the person column.
+            for table in ('incidents', 'live_incidents'):
+                columns = {row[1] for row in self._db.execute(f'PRAGMA table_info({table})')}
+                if 'track_id' not in columns:
+                    self._db.execute(f'ALTER TABLE {table} ADD COLUMN track_id INTEGER')
             self._db.commit()
 
     def close(self) -> None:
@@ -205,14 +212,15 @@ class Store:
                     (state, utc_now(), frames, error, session_id))
 
     def add_live_incident(self, incident):
-        keys = ('incident_id','session_id','detected_at_seconds','confidence','created_at_utc')
-        self._write('INSERT INTO live_incidents VALUES (?,?,?,?,?)', tuple(incident[key] for key in keys))
+        keys = ('incident_id', 'session_id', 'track_id', 'detected_at_seconds', 'confidence', 'created_at_utc')
+        self._write(f"INSERT INTO live_incidents ({','.join(keys)}) VALUES ({','.join('?' * len(keys))})",
+                    tuple(incident.get(key) for key in keys))
 
     def live_history(self, owner):
         sessions = self._read('SELECT * FROM live_sessions WHERE owner=? ORDER BY created_at_utc DESC LIMIT 20', (owner,))
         for session in sessions:
             session.pop('owner')
-            session['incidents'] = self._read('SELECT * FROM live_incidents WHERE session_id=? ORDER BY detected_at_seconds',
+            session['incidents'] = self._read('SELECT * FROM live_incidents WHERE session_id=? ORDER BY detected_at_seconds, track_id',
                                              (session['session_id'],))
         return sessions
 

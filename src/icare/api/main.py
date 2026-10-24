@@ -70,7 +70,7 @@ def create_app(settings: Settings | None = None, engine: Any = _NOT_LOADED) -> F
                 remove_job_files(settings, folder.name)
         state.runner = JobRunner(
             state.store, state.engine, settings.data_dir / "jobs", settings.job_timeout_seconds,
-            settings.result_reserve_bytes,
+            settings.result_reserve_bytes, settings.fall_confirmations,
         )
         state.runner.start()
         remove_expired(state.store, settings)

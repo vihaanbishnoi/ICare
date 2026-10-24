@@ -27,14 +27,18 @@ class Settings:
     max_jobs_per_ip_window: int = 60
     admission_window_seconds: float = 3600.0
     max_storage_bytes: int = 1024 * 1024 * 1024
-    result_reserve_bytes: int = 5 * 1024 * 1024
+    # Per-job result/report budget; poses grow with the number of people (~0.8 MB
+    # per person per minute), so 16 MB covers about 20 people for a 60 s upload.
+    result_reserve_bytes: int = 16 * 1024 * 1024
+    # Consecutive P(Fall) >= 0.50 predictions per person before an incident (1 = baseline).
+    fall_confirmations: int = 1
 
     def __post_init__(self) -> None:
         for name in ('max_upload_bytes', 'max_upload_seconds', 'max_queued_jobs',
                      'job_timeout_seconds', 'retention_seconds', 'cleanup_interval_seconds',
                      'max_active_jobs_per_visitor', 'max_jobs_per_visitor_window',
                      'max_jobs_per_ip_window', 'admission_window_seconds', 'max_storage_bytes',
-                     'result_reserve_bytes'):
+                     'result_reserve_bytes', 'fall_confirmations'):
             value = getattr(self, name)
             if not math.isfinite(value) or value <= 0:
                 raise ValueError(f'{name} must be positive and finite')
@@ -61,4 +65,6 @@ class Settings:
             max_jobs_per_ip_window=int(env.get('ICARE_MAX_JOBS_PER_IP_WINDOW', 60)),
             admission_window_seconds=float(env.get('ICARE_ADMISSION_WINDOW_SECONDS', 3600)),
             max_storage_bytes=int(float(env.get('ICARE_MAX_STORAGE_MB', 1024)) * 1024 * 1024),
+            fall_confirmations=int(env.get('ICARE_FALL_CONFIRMATIONS', 1)),
+            result_reserve_bytes=int(float(env.get('ICARE_RESULT_BUDGET_MB', 16)) * 1024 * 1024),
         )

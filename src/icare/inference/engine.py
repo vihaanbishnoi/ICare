@@ -20,6 +20,7 @@ import numpy as np
 from icare.inference.pose import DEFAULT_POSE_MODEL, PoseFrame
 from icare.inference.pose_signals import PoseSignalEstimator
 from icare.inference.posec3d_bridge import PoseSequenceBuffer
+from icare.inference.tracking import PersonTracker
 
 
 log = logging.getLogger(__name__)
@@ -72,6 +73,10 @@ class EngineClosedError(EngineError):
 # -------------------------------------------------------------------- configuration
 
 OUTPUT_PRECISION = 4  # decimals kept for pixel coordinates in emitted records
+# PoseC3D runs per person (~0.2 s each on a laptop CPU). A camera frame classifies
+# at most this many due people, most overdue first, so crowds cannot stall the
+# stream; recorded videos classify everyone who is due.
+LIVE_PREDICTIONS_PER_FRAME = 2
 
 
 @dataclass(frozen=True)
@@ -88,6 +93,8 @@ class EngineConfig:
     # A person missing for longer than this ends the track: the temporal window
     # restarts instead of interpolating a pose across the absence. None disables.
     max_pose_gap_seconds: float | None = 1.0
+    # How long an unseen person keeps their ID (occlusion, missed detections).
+    track_max_age_seconds: float = 2.0
 
     def __post_init__(self) -> None:
         if not (math.isfinite(self.sample_fps) and self.sample_fps > 0):
@@ -96,6 +103,8 @@ class EngineConfig:
             raise ValueError("inference_width must be at least 64 pixels")
         if self.prediction_interval_seconds < 0:
             raise ValueError("prediction_interval_seconds must not be negative")
+        if not (math.isfinite(self.track_max_age_seconds) and self.track_max_age_seconds > 0):
+            raise ValueError("track_max_age_seconds must be a positive number")
 
     @classmethod
     def from_mapping(cls, config: Mapping[str, Any]) -> "EngineConfig":
@@ -110,6 +119,7 @@ class EngineConfig:
         known = {
             "model_path", "metadata_path", "device", "sample_fps", "inference_width",
             "prediction_interval_seconds", "max_pose_gap_seconds", "pose_model_path",
+            "track_max_age_seconds",
         }
         unknown = sorted(set(values) - known)
         if unknown:
@@ -134,8 +144,8 @@ class PoseExtractor(Protocol):
 
     def fork(self) -> "PoseExtractor": ...
 
-    def extract(self, frame_rgb: np.ndarray, timestamp_seconds: float) -> PoseFrame | None:
-        """COCO-17 pose of the primary person in ``frame_rgb`` coordinates, or None."""
+    def extract_all(self, frame_rgb: np.ndarray, timestamp_seconds: float) -> list[PoseFrame]:
+        """COCO-17 poses of every detected person in ``frame_rgb`` coordinates."""
 
 
 class TemporalClassifier(Protocol):
@@ -309,6 +319,7 @@ class PoseC3DEngine:
             "prediction_interval_seconds": self.config.prediction_interval_seconds,
             "max_pose_gap_seconds": self.config.max_pose_gap_seconds,
             "pose_architecture": "YOLO26n-pose",
+            "track_max_age_seconds": self.config.track_max_age_seconds,
             **{key: value for key, value in self._buffer_settings.items()},
         }
 
@@ -366,13 +377,14 @@ class PoseC3DEngine:
         if cancel.is_set():
             raise AnalysisCancelled("The analysis was cancelled.")
 
-    def start_stream(self) -> "FrameSession":
+    def start_stream(self, max_predictions_per_frame: int | None = LIVE_PREDICTIONS_PER_FRAME) -> "FrameSession":
         """Reserve the model for a fresh camera session until close()."""
         if not self._job_lock.acquire(blocking=False):
             raise ModelRuntimeError("The model is already processing another source.")
         try:
             self._check_live(threading.Event())
-            return FrameSession(self, release=self._job_lock.release)
+            return FrameSession(self, release=self._job_lock.release,
+                                max_predictions_per_frame=max_predictions_per_frame)
         except BaseException:
             self._job_lock.release()
             raise
@@ -388,66 +400,89 @@ class PoseC3DEngine:
             for item in source.samples():
                 self._check_live(cancel)
                 record = session.process_frame(item.frame_rgb, item.timestamp_seconds)
-                if record["pose"] is not None:
-                    on_pose(record["pose"])
-                if record["prediction"] is not None:
-                    on_prediction(record["prediction"])
+                for pose in record["poses"]:
+                    on_pose(pose)
+                for prediction in record["predictions"]:
+                    on_prediction(prediction)
                 total = source.frame_count_reported
                 on_progress(min((item.index + 1) / total, 0.99) if total else None)
             self._check_live(cancel)
             if source.frames_decoded == 0 or session.frame_size is None:
                 raise InvalidVideoError("No frame of the video could be decoded.")
-            final = session.finish()
-            if final is not None:
-                on_prediction(final)
+            for prediction in session.finish():
+                on_prediction(prediction)
             if session.poses_emitted == 0:
                 raise NoPersonError("No person was detected in the sampled frames.")
             if session.predictions_emitted == 0:
                 raise InsufficientCoverageError(
                     f"{session.poses_emitted} pose(s) found, but the model needs at least "
-                    f"{session.buffer.minimum_poses} poses spanning {session.buffer.minimum_coverage_seconds:g} s "
-                    "of one continuous track.")
+                    f"{self._buffer_settings['minimum_poses']} poses spanning "
+                    f"{self._buffer_settings['minimum_coverage_seconds']:g} s of one person's continuous track.")
             width, height = session.frame_size
             return {
                 "duration_seconds": round(source.frames_decoded / source.fps, 6),
                 "frame_width": width, "frame_height": height,
-                "metrics": _metrics(source, session.resources, session.sampled,
-                    session.poses_emitted, session.predictions_emitted, session.track_resets,
+                "metrics": {**_metrics(source, session.resources, session.sampled,
+                    session.frames_with_people, session.predictions_emitted, session.track_resets,
                     session.pose_ms_total, perf_counter() - started, self.config),
+                    "pose_records": session.poses_emitted,
+                    "people_tracked": session.tracker.ids_issued,
+                    "max_people_in_frame": session.max_people_in_frame},
             }
         finally:
             source.close()
             session.close()
 
 
+@dataclass
+class _Person:
+    """Temporal state of one tracked person; nothing here is shared between people."""
+
+    buffer: PoseSequenceBuffer
+    signals: PoseSignalEstimator
+    last_pose_t: float | None = None
+    last_prediction_t: float = float("-inf")
+    latest_signals: Any = None
+
+
 class FrameSession:
     """Per-source state shared by recorded-video and live-camera execution.
 
+    Every person gets their own track ID, pose window, signals and prediction
+    cadence, so one person's movement can never enter another's model input.
     Uses capture timestamps, not completion time. Sparse or interrupted capture
     keeps the original coverage/gap checks; it never fabricates missing poses.
     """
 
-    def __init__(self, engine: PoseC3DEngine, release=lambda: None):
+    def __init__(self, engine: PoseC3DEngine, release=lambda: None,
+                 max_predictions_per_frame: int | None = None):
         assert engine._extractor is not None and engine._classifier is not None
+        if max_predictions_per_frame is not None and max_predictions_per_frame < 1:
+            raise ValueError("max_predictions_per_frame must be at least 1")
         self.engine = engine
         self.extractor = engine._extractor.fork()
         self.classifier = engine._classifier
-        self.buffer = PoseSequenceBuffer(**engine._buffer_settings)
-        self.signals = PoseSignalEstimator()
+        self.tracker = PersonTracker(max_age_seconds=engine.config.track_max_age_seconds)
+        self.people: dict[int, _Person] = {}
+        self.max_predictions_per_frame = max_predictions_per_frame
         self.resources = ResourceSampler()
         self.frame_size = None
-        self.sampled = self.poses_emitted = self.predictions_emitted = self.track_resets = 0
+        self.sampled = self.poses_emitted = self.frames_with_people = 0
+        self.predictions_emitted = self.track_resets = self.max_people_in_frame = 0
         self.pose_ms_total = 0.0
-        self.last_pose_t = self.last_frame_t = None
-        self.last_prediction_t = float("-inf")
-        self.latest_signals = None
+        self.last_frame_t = None
         self._release, self.closed = release, False
 
     def close(self):
         if not self.closed:
             self.closed = True
-            self.buffer.clear()
+            self.people.clear()
             self._release()
+
+    def _person(self, track_id: int) -> _Person:
+        if track_id not in self.people:
+            self.people[track_id] = _Person(PoseSequenceBuffer(**self.engine._buffer_settings), PoseSignalEstimator())
+        return self.people[track_id]
 
     def process_frame(self, frame_rgb: np.ndarray, timestamp_seconds: float) -> dict:
         if self.closed or self.engine._closed.is_set():
@@ -462,36 +497,55 @@ class FrameSession:
         self.sampled += 1
         frame = _resize_for_inference(frame_rgb, self.engine.config.inference_width)
         try:
-            found = self.extractor.extract(frame, t)
+            found = self.extractor.extract_all(frame, t)
         except EngineError:
             raise
         except Exception as exc:
             raise ModelRuntimeError(f"Pose estimation failed: {type(exc).__name__}: {exc}") from exc
-        pose_record = prediction = None
-        status = "no_person"
-        if found is not None:
-            pose = _to_source_coordinates(found, width / frame.shape[1], height / frame.shape[0], width, height)
-            gap = self.engine.config.max_pose_gap_seconds
-            if self.last_pose_t is not None and gap is not None and t - self.last_pose_t > gap:
-                self.buffer.clear()
-                self.signals.reset()
+        poses = [_to_source_coordinates(pose, width / frame.shape[1], height / frame.shape[0], width, height)
+                 for pose in found]
+        assignments = self.tracker.update(poses, t)
+        for track_id in self.tracker.expired:
+            self.people.pop(track_id, None)  # bounded memory: forgotten people free their window
+        if poses:
+            self.frames_with_people += 1
+            self.pose_ms_total += float(found[0].inference_ms)  # one model pass serves everyone
+            self.max_people_in_frame = max(self.max_people_in_frame, len(poses))
+
+        pose_records, people, due = [], [], []
+        gap = self.engine.config.max_pose_gap_seconds
+        for track_id, pose in assignments:
+            person = self._person(track_id)
+            if person.last_pose_t is not None and gap is not None and t - person.last_pose_t > gap:
+                person.buffer.clear()
+                person.signals.reset()
                 self.track_resets += 1
-            self.last_pose_t = t
-            self.latest_signals = self.signals.update(pose)
-            self.buffer.append(pose)
+            person.last_pose_t = t
+            person.latest_signals = person.signals.update(pose)
+            person.buffer.append(pose)
             self.poses_emitted += 1
-            self.pose_ms_total += float(found.inference_ms)
-            pose_record = _pose_record(pose)
-            status = "monitoring" if self.buffer.ready else "warming_up"
-            if self.buffer.ready and t - self.last_prediction_t >= self.engine.config.prediction_interval_seconds:
-                prediction = self._predict()
-        return {"timestamp_seconds": _seconds(t), "pose": pose_record, "prediction": prediction,
-                "status": status, "coverage_seconds": self.buffer.coverage_seconds,
-                "pose_count": self.buffer.pose_count, "track_resets": self.track_resets,
+            pose_records.append(_pose_record(pose, track_id))
+            interval = self.engine.config.prediction_interval_seconds
+            if person.buffer.ready and t - person.last_prediction_t >= interval:
+                due.append(track_id)
+            people.append({"track_id": track_id,
+                           "status": "monitoring" if person.buffer.ready else "warming_up",
+                           "coverage_seconds": person.buffer.coverage_seconds,
+                           "pose_count": person.buffer.pose_count})
+        # Most overdue first; live sessions may cap the work done per frame.
+        due.sort(key=lambda tid: (self.people[tid].last_prediction_t, tid))
+        if self.max_predictions_per_frame is not None:
+            due = due[:self.max_predictions_per_frame]
+        predictions = [p for p in (self._predict(tid) for tid in sorted(due)) if p is not None]
+        status = ("no_person" if not people else
+                  "monitoring" if any(p["status"] == "monitoring" for p in people) else "warming_up")
+        return {"timestamp_seconds": _seconds(t), "poses": pose_records, "predictions": predictions,
+                "people": people, "status": status, "track_resets": self.track_resets,
                 "frame_width": width, "frame_height": height}
 
-    def _predict(self):
-        model_input = self.buffer.build()
+    def _predict(self, track_id: int):
+        person = self.people[track_id]
+        model_input = person.buffer.build()
         if model_input is None:
             return None
         started = perf_counter()
@@ -505,18 +559,24 @@ class FrameSession:
         probability = _checked_probability(probability)
         self.resources.sample()
         self.predictions_emitted += 1
-        self.last_prediction_t = float(model_input.end_seconds)
-        return {"timestamp_seconds": _seconds(model_input.end_seconds), "fall_probability": probability,
+        person.last_prediction_t = float(model_input.end_seconds)
+        return {"track_id": track_id, "timestamp_seconds": _seconds(model_input.end_seconds),
+                "fall_probability": probability,
                 "window_start_seconds": _seconds(model_input.start_seconds),
                 "source_pose_count": int(model_input.source_pose_count), "inference_ms": round(inference_ms, 3),
-                "urgency": _optional(self.latest_signals, "urgency"),
-                "reliability": _optional(self.latest_signals, "reliability")}
+                "urgency": _optional(person.latest_signals, "urgency"),
+                "reliability": _optional(person.latest_signals, "reliability")}
 
-    def finish(self):
-        """Offline-only drain: classify the final valid window once."""
-        if self.buffer.ready and self.last_pose_t is not None and self.last_pose_t > self.last_prediction_t:
-            return self._predict()
-        return None
+    def finish(self) -> list[dict]:
+        """Offline-only drain: classify each person's final valid window once."""
+        final = []
+        for track_id in sorted(self.people):
+            person = self.people[track_id]
+            if person.buffer.ready and person.last_pose_t is not None and person.last_pose_t > person.last_prediction_t:
+                prediction = self._predict(track_id)
+                if prediction is not None:
+                    final.append(prediction)
+        return final
 
 
 # ----------------------------------------------------------------------------- helpers
@@ -561,8 +621,9 @@ def _to_source_coordinates(
     )
 
 
-def _pose_record(pose: PoseFrame) -> dict[str, Any]:
+def _pose_record(pose: PoseFrame, track_id: int) -> dict[str, Any]:
     return {
+        "track_id": track_id,
         "timestamp_seconds": _seconds(pose.timestamp_seconds),
         "bbox_xyxy": [round(float(v), OUTPUT_PRECISION) for v in pose.bbox],
         "keypoints": [

@@ -10,6 +10,9 @@ KeypointScore = FiniteFloat
 
 
 JobState = Literal["queued", "running", "completed", "failed", "cancelled"]
+# Per-source person ID from the engine's tracker (1, 2, ...). Optional so results
+# stored before multi-person tracking still validate.
+TrackId = int | None
 
 
 class ErrorDetail(BaseModel):
@@ -33,6 +36,7 @@ class Job(BaseModel):
 
 
 class Prediction(BaseModel):
+    track_id: TrackId = Field(default=None, ge=1)
     timestamp_seconds: FiniteFloat = Field(ge=0)
     fall_probability: FiniteFloat = Field(ge=0, le=1)
     window_start_seconds: FiniteFloat | None = None
@@ -43,6 +47,7 @@ class Prediction(BaseModel):
 
 
 class Pose(BaseModel):
+    track_id: TrackId = Field(default=None, ge=1)
     timestamp_seconds: FiniteFloat = Field(ge=0)
     bbox_xyxy: list[FiniteFloat] = Field(min_length=4, max_length=4)
     keypoints: list[tuple[FiniteFloat, FiniteFloat, KeypointScore]] = Field(min_length=17, max_length=17)
@@ -51,6 +56,7 @@ class Pose(BaseModel):
 class Incident(BaseModel):
     incident_id: str
     job_id: str
+    track_id: TrackId = Field(default=None, ge=1)
     detected_at_seconds: float
     confidence: float = Field(ge=0, le=1)
     status: Literal["detected", "acknowledged"]
@@ -81,9 +87,21 @@ class LiveSession(BaseModel):
 class LiveIncident(BaseModel):
     incident_id: str
     session_id: str
+    track_id: TrackId = Field(default=None, ge=1)
     detected_at_seconds: FiniteFloat = Field(ge=0)
     confidence: FiniteFloat = Field(ge=0, le=1)
     created_at_utc: str
+
+
+class LivePerson(BaseModel):
+    """One tracked person in the analyzed frame, with their own temporal state."""
+    track_id: int = Field(ge=1)
+    pose: Pose
+    prediction: Prediction | None
+    status: Literal['warming_up', 'monitoring']
+    coverage_seconds: FiniteFloat = Field(ge=0)
+    pose_count: int = Field(ge=0)
+    incident_latched: bool
 
 
 class LiveFrame(BaseModel):
@@ -92,16 +110,13 @@ class LiveFrame(BaseModel):
     timestamp_seconds: FiniteFloat = Field(ge=0)
     frame_width: int = Field(gt=0)
     frame_height: int = Field(gt=0)
-    pose: Pose | None
-    prediction: Prediction | None
+    people: list[LivePerson]
     status: Literal['no_person', 'warming_up', 'monitoring']
-    coverage_seconds: FiniteFloat = Field(ge=0)
-    pose_count: int = Field(ge=0)
     track_resets: int = Field(ge=0)
     frames_processed: int = Field(ge=0)
     processed_fps: FiniteFloat = Field(ge=0)
     processing_ms: FiniteFloat = Field(ge=0)
-    incident: LiveIncident | None
+    incidents: list[LiveIncident]
     incident_latched: bool
 
 

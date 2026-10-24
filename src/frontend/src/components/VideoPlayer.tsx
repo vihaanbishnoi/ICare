@@ -1,11 +1,13 @@
 /**
- * Recorded video with a canvas overlay for the nearest sampled pose and the latest
- * prediction. Poses are scaled from source pixels; no overlay where no pose exists.
+ * Recorded video with a canvas overlay: every person's nearest sampled pose, labelled
+ * with their own latest prediction. Poses are scaled from source pixels; a person is
+ * not drawn where they have no pose.
  */
 import { useEffect, useRef } from 'react';
 import type { Incident, Pose, Prediction } from '../types';
-import { hasRecordedIncident, poseAtTime, predictionAtTime } from '../lib/playback';
-import { drawPose, MONO } from '../lib/poseOverlay';
+import { personKey } from '../lib/people';
+import { hasRecordedIncident, posesAtTime, predictionsAtTime } from '../lib/playback';
+import { drawPose } from '../lib/poseOverlay';
 
 interface Props {
   mediaUrl: string;
@@ -38,49 +40,10 @@ export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predicti
       const t = video.currentTime;
       const scaleX = dw / frameWidth;
       const scaleY = dh / frameHeight;
-      const pose = poseAtTime(poses, t);
-      const pred = predictionAtTime(predictions, t);
-      const falling = hasRecordedIncident(incidents, t);
-
-      drawPose(ctx, pose, scaleX, scaleY, falling);
-
-      // P(Fall) confidence bar (bottom-right)
-      if (pred !== null) {
-        const p = pred.fall_probability;
-        const bX = dw - 140, bY = dh - 40, bW = 120, bH = 10;
-        ctx.fillStyle = 'rgba(7,12,22,0.8)';
-        ctx.beginPath();
-        ctx.roundRect(bX - 8, bY - 24, bW + 16, bH + 32, 6);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(139,148,158,0.6)';
-        ctx.font = `500 11px ${MONO}`;
-        ctx.fillText('P(Fall)', bX, bY - 8);
-        ctx.textAlign = 'right';
-        ctx.fillText(p.toFixed(2), bX + bW, bY - 8);
-        ctx.textAlign = 'left';
-
-        ctx.fillStyle = 'rgba(33,38,45,0.9)';
-        ctx.beginPath();
-        ctx.roundRect(bX, bY, bW, bH, 4);
-        ctx.fill();
-        const barColor = p >= 0.5 ? '#f85149' : p > 0.3 ? '#d29922' : '#58a6ff';
-        ctx.fillStyle = barColor;
-        ctx.beginPath();
-        ctx.roundRect(bX, bY, bW * p, bH, 4);
-        ctx.fill();
-
-        // Threshold tick
-        ctx.strokeStyle = 'rgba(139,148,158,0.4)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(bX + bW * 0.5, bY - 2);
-        ctx.lineTo(bX + bW * 0.5, bY + bH + 2);
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(139,148,158,0.4)';
-        ctx.font = `400 9px ${MONO}`;
-        ctx.textAlign = 'center';
-        ctx.fillText('0.5', bX + bW * 0.5, bY + bH + 12);
-        ctx.textAlign = 'left';
+      const latest = predictionsAtTime(predictions, t);
+      for (const pose of posesAtTime(poses, t)) {
+        drawPose(ctx, pose, scaleX, scaleY, hasRecordedIncident(incidents, t, pose.track_id),
+          latest.get(personKey(pose.track_id))?.fall_probability ?? null);
       }
 
       rafRef.current = requestAnimationFrame(drawOverlay);
@@ -114,6 +77,6 @@ export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predicti
         onLoadedMetadata={event => onTimeChange?.(event.currentTarget.currentTime)} />
       <canvas ref={canvasRef} className="stage__overlay" aria-hidden="true" />
     </div>
-    <figcaption className="stage__caption"><span>Your video with the analyzed skeleton</span></figcaption>
+    <figcaption className="stage__caption"><span>Your video with each person's analyzed skeleton</span></figcaption>
   </figure>;
 }

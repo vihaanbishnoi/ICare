@@ -143,7 +143,7 @@ export function UploadPanel() {
             poses={result.poses} predictions={result.predictions} incidents={result.incidents} onTimeChange={setVideoTime} />
           <section className="panel" aria-labelledby="video-trace-title">
             <header className="panel__header"><h2 id="video-trace-title">Fall probability</h2><span>Click play or seek to move the marker</span></header>
-            <ConfidenceChart predictions={result.predictions} incidentTimes={result.incidents.map(item => item.detected_at_seconds)}
+            <ConfidenceChart predictions={result.predictions} incidents={result.incidents}
               durationSeconds={result.duration_seconds} currentTime={videoTime}
               emptyText="No predictions: the video never had six poses spanning two seconds." />
           </section>
