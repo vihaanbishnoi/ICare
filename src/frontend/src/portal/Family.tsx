@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ago, clock, dayLabel, duration, fallsForDay, HISTORY_DAYS, markRead, responseSeconds, STATUS_LABEL, useNow, useStore, type FallEvent, type Session } from './data';
 import { downloadCsv, printReport } from './report';
-import { ClipPlayer, Icon, Initials, Logo, Modal, StatusPill } from './ui';
+import { FallClip, Icon, Initials, Logo, Modal, StatusPill } from './ui';
 import { BigAlert, DayStrip } from './extras';
 
 const STATUS_COPY = {
@@ -102,7 +102,7 @@ export function Family({ session, onSignOut }: { session: Session; onSignOut: ()
           <ol className="p-timeline">{timeline.map((e, i) => <li key={i} data-kind={e.kind}>
             <span className="p-timeline__dot" />
             <div><strong>{e.title}</strong><p>{e.text}</p><small className="p-muted num">{clock(e.at)} · {ago(e.at, now)}</small></div>
-            {e.fall && e.kind === 'fall' && <button type="button" className="p-btn p-btn--sm" onClick={() => setClip(e.fall!)}><Icon name="play" size={14} />5s clip</button>}
+            {e.fall && e.kind === 'fall' && <button type="button" className="p-btn p-btn--sm" onClick={() => setClip(e.fall!)}><Icon name="play" size={14} />Clip</button>}
           </li>)}
             {!timeline.length && <li className="p-empty">No falls on this day. Monitoring ran normally.</li>}</ol>
         </section>
@@ -126,11 +126,11 @@ export function Family({ session, onSignOut }: { session: Session; onSignOut: ()
       detail={`A fall was detected in room ${bigFall.room}. Care staff were alerted instantly and are on their way.`}
       time={`${clock(bigFall.at)} · ${ago(bigFall.at, now)}`} extra={`Room ${bigFall.room} · ${bigFall.wing} wing`}
       primary="OK, keep me updated" onPrimary={() => setBigFall(null)}
-      secondary="View 5s clip" onSecondary={() => { const f = bigFall; setBigFall(null); setClip(f); }}
+      secondary="View clip" onSecondary={() => { const f = bigFall; setBigFall(null); setClip(f); }}
       onDismiss={() => setBigFall(null)} />}
 
     {clip && <Modal title={`Fall clip · ${clock(clip.at)}`} onClose={() => setClip(null)} wide>
-      <ClipPlayer seed={clip.clipSeed} room={clip.room} at={clip.at} label="Five second clip of the detected fall" />
+      <FallClip fall={clip} label="Simulated clip of the detected fall" />
       <div className="p-clipmeta">
         <div><span>Room</span><strong>{clip.room}</strong></div>
         <div><span>Detected</span><strong>{clock(clip.at)}</strong></div>

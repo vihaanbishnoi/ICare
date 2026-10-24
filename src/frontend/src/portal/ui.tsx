@@ -1,6 +1,7 @@
 /** Small shared pieces for the care portal: icons, badges, the 5-second clip player and modal. */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { STATUS_LABEL, type ResidentStatus } from './data';
+import { ClipView } from '../components/ClipView';
+import { STATUS_LABEL, type FallEvent, type ResidentStatus } from './data';
 
 const paths: Record<string, string> = {
   grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
@@ -39,8 +40,8 @@ export function Logo() {
   </div>;
 }
 
-export function StatusPill({ status }: { status: ResidentStatus }) {
-  return <span className="p-status" data-status={status}><span className="p-status__dot" />{STATUS_LABEL[status]}</span>;
+export function StatusPill({ status, label }: { status: ResidentStatus; label?: string }) {
+  return <span className="p-status" data-status={status}><span className="p-status__dot" />{label ?? STATUS_LABEL[status]}</span>;
 }
 
 export function Delta({ value, goodWhenDown = true }: { value: number; goodWhenDown?: boolean }) {
@@ -50,7 +51,7 @@ export function Delta({ value, goodWhenDown = true }: { value: number; goodWhenD
 
 export function Initials({ name, tone = 0 }: { name: string; tone?: number }) {
   const initials = name.split(' ').map(p => p[0]).slice(0, 2).join('');
-  return <span className="p-avatar" data-tone={tone % 5}>{initials}</span>;
+  return <span className="p-avatar" data-tone={(Number.isFinite(tone) ? tone : 0) % 5}>{initials}</span>;
 }
 
 export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
@@ -67,10 +68,16 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   </dialog>;
 }
 
+/** The clip for one fall: the recorded video for real detections, a labelled stand-in otherwise. */
+export function FallClip({ fall, label }: { fall: FallEvent; label: string }) {
+  if (fall.clipId) return <div className="p-realclip"><ClipView clipId={fall.clipId} /></div>;
+  return <ClipPlayer seed={fall.clipSeed} room={fall.room} at={fall.at} label={label} />;
+}
+
 /**
- * Five-second incident clip. No recordings exist in this demo, so the clip is a
+ * Stand-in for a simulated fall. No footage exists for simulated events, so this is a
  * pose-only reconstruction (skeleton, no camera image) generated from the event seed.
- * A real deployment would stream the stored 5 s window around the detection here.
+ * Falls found by the real detector never use it: they play their stored clip.
  */
 export function ClipPlayer({ seed, room, at, label }: { seed: number; room: string; at: number; label: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -150,6 +157,6 @@ export function ClipPlayer({ seed, room, at, label }: { seed: number; room: stri
         onChange={e => { setPlaying(false); setT(Number(e.target.value)); }} />
       <span className="num">{t.toFixed(1)} / {LEN.toFixed(1)} s</span>
     </div>
-    <p className="p-clip__note">Demo clip: simulated pose replay, not footage. Real clips recorded by the detector are listed under Fall incidents, Camera detections.</p>
+    <p className="p-clip__note">Simulated event: no footage exists, this is a drawn pose replay. Falls found by the detector play their recorded clip.</p>
   </div>;
 }

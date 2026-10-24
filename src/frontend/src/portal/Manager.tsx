@@ -4,12 +4,14 @@ import { ModeTabs, type Mode } from '../components/Chrome';
 import { LivePanel } from '../components/LivePanel';
 import { UploadPanel } from '../components/UploadPanel';
 import {
-  acknowledgeFall, ago, clock, dayStats, duration, responseSeconds, ROOMS, sendMessage, simulateFall,
-  useNow, useSimulation, useStore, type FallEvent, type Resident, type Session,
+  acknowledgeFall, ago, ALL_ROOMS, bytesLabel, clock, dayStats, DETECTOR, DETECTOR_ID, duration, residentName,
+  responseSeconds, ROOMS, sendMessage, simulateFall, syncDetectorClips, useNow, useSimulation, useStore, wingLabel,
+  type FallEvent, type Resident, type Session,
 } from './data';
-import { CameraClips } from './CameraClips';
+import { useClipList } from '../hooks/useClips';
+import type { ClipList } from '../types';
 import { downloadCsv, printReport } from './report';
-import { ClipPlayer, Icon, Initials, Logo, Modal, StatusPill } from './ui';
+import { FallClip, Icon, Initials, Logo, Modal, StatusPill } from './ui';
 import { BigAlert, DayStrip, ModelCard, Trend } from './extras';
 import { dayLabel, fallsForDay, HISTORY_DAYS } from './data';
 import { useTheme } from '../lib/theme';
@@ -34,22 +36,28 @@ export function Manager({ session, onSignOut }: { session: Session; onSignOut: (
   useSimulation(true);
   const nowT = useNow(1000);
 
+  // Falls found by the real detector (live camera or uploaded video) join the feed with their clip.
+  const { list: clipList, unavailable: clipsUnavailable } = useClipList(4000);
+  useEffect(() => { if (clipList) syncDetectorClips(clipList.clips); }, [clipList]);
+
   const open = store.falls.filter(f => !f.acknowledgedAt);
-  const resident = (id: string) => store.residents.find(r => r.id === id)!;
+  const resident = (id: string) => store.residents.find(r => r.id === id) ?? DETECTOR;
 
   // Realtime alerting: any fall not seen before raises a toast, a chime and a system notification.
   const seen = useRef<Set<string> | null>(null);
   useEffect(() => {
     if (!seen.current) { seen.current = new Set(store.falls.map(f => f.id)); return; }
-    const fresh = store.falls.filter(f => !seen.current!.has(f.id));
-    fresh.forEach(f => seen.current!.add(f.id));
+    const added = store.falls.filter(f => !seen.current!.has(f.id));
+    added.forEach(f => seen.current!.add(f.id));
+    // Clips already stored when the console opens are history, not new alerts.
+    const fresh = added.filter(f => !f.clipId || Date.now() - f.at < 2 * 60_000);
     if (!fresh.length) return;
     setToasts(t => [...fresh, ...t].slice(0, 5));
     chime();
     for (const f of fresh) {
       try {
         if ('Notification' in window && Notification.permission === 'granted')
-          new Notification(`Fall detected · Room ${f.room}`, { body: `${resident(f.residentId).name}, ${f.wing} wing`, tag: f.id });
+          new Notification(`Fall detected · Room ${f.room}`, { body: `${resident(f.residentId).name}, ${wingLabel(f.wing)}`, tag: f.id });
       } catch { /* notifications unavailable */ }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,9 +86,10 @@ export function Manager({ session, onSignOut }: { session: Session; onSignOut: (
       <div className="p-side__foot">
         <div className="p-side__wings">
           <p className="p-side__label">Wings</p>
-          {['East', 'West', 'Garden'].map(w => {
-            const n = store.residents.filter(r => r.wing === w && r.status === 'fall').length;
-            return <div key={w} className="p-wing"><Icon name="room" /><span>{w} wing</span>{n > 0 && <span className="p-nav__count">{n}</span>}</div>;
+          {['East', 'West', 'Garden', DETECTOR.wing].map(w => {
+            const n = w === DETECTOR.wing ? open.filter(f => f.residentId === DETECTOR_ID).length
+              : store.residents.filter(r => r.wing === w && r.status === 'fall').length;
+            return <div key={w} className="p-wing"><Icon name="room" /><span>{wingLabel(w)}</span>{n > 0 && <span className="p-nav__count">{n}</span>}</div>;
           })}
         </div>
         <div className="p-user">
@@ -122,7 +131,8 @@ export function Manager({ session, onSignOut }: { session: Session; onSignOut: (
         {view === 'overview' && <Overview falls={store.falls} residents={store.residents} now={nowT}
           onClip={setClip} onAttend={setAttend} onGo={setView} onNotify={id => setNotify({ residentId: id })} />}
         {view === 'live' && <LiveMonitor residents={store.residents} falls={store.falls} now={nowT} onClip={setClip} onAttend={setAttend} onNotify={id => setNotify({ residentId: id })} />}
-        {view === 'incidents' && <Incidents falls={store.falls} residents={store.residents} now={nowT} onClip={setClip} onAttend={setAttend} />}
+        {view === 'incidents' && <Incidents falls={store.falls} residents={store.residents} now={nowT} onClip={setClip} onAttend={setAttend}
+          clipInfo={clipList} clipsUnavailable={clipsUnavailable} />}
         {view === 'reports' && <Reports falls={store.falls} residents={store.residents} />}
         {view === 'families' && <Families residents={store.residents} onNotify={id => setNotify({ residentId: id })} />}
         {view === 'detection' && <Detection />}
@@ -130,14 +140,14 @@ export function Manager({ session, onSignOut }: { session: Session; onSignOut: (
     </div>
 
     {toasts[0] && !clip && !attend && (() => { const f = toasts[0]; return <BigAlert kicker="Fall detected"
-      place={`Room ${f.room}`} detail={`${resident(f.residentId).name} · ${f.wing} wing`}
+      place={`Room ${f.room}`} detail={`${resident(f.residentId).name} · ${wingLabel(f.wing)}`}
       time={`${clock(f.at)} · ${ago(f.at, nowT)}`} extra={`${Math.round(f.confidence * 100)}% confidence`}
       primary="Respond now" onPrimary={() => { dismissToast(f.id); setAttend(f); }}
-      secondary="View 5s clip" onSecondary={() => { dismissToast(f.id); setClip(f); }}
+      secondary="View clip" onSecondary={() => { dismissToast(f.id); setClip(f); }}
       onDismiss={() => dismissToast(f.id)} more={toasts.length - 1} />; })()}
 
     {clip && <Modal title={`Fall clip · Room ${clip.room}`} onClose={() => setClip(null)} wide>
-      <ClipPlayer seed={clip.clipSeed} room={clip.room} at={clip.at} label={`Five second clip of the fall in room ${clip.room}`} />
+      <FallClip fall={clip} label={`Simulated clip of the fall in room ${clip.room}`} />
       <div className="p-clipmeta">
         <div><span>Resident</span><strong>{resident(clip.residentId).name}</strong></div>
         <div><span>Detected</span><strong>{clock(clip.at)}</strong></div>
@@ -145,7 +155,7 @@ export function Manager({ session, onSignOut }: { session: Session; onSignOut: (
         <div><span>Status</span><strong>{clip.acknowledgedAt ? `Attended in ${duration(responseSeconds(clip)!)}` : 'Open'}</strong></div>
       </div>
       <div className="p-modal__foot">
-        <button type="button" className="p-btn" onClick={() => { const f = clip; setClip(null); setNotify({ residentId: f.residentId, preset: 'fall' }); }}><Icon name="send" size={16} />Notify family</button>
+        {resident(clip.residentId).family && <button type="button" className="p-btn" onClick={() => { const f = clip; setClip(null); setNotify({ residentId: f.residentId, preset: 'fall' }); }}><Icon name="send" size={16} />Notify family</button>}
         {!clip.acknowledgedAt && <button type="button" className="p-btn p-btn--primary" onClick={() => { const f = clip; setClip(null); setAttend(f); }}><Icon name="check" size={16} />Mark attended</button>}
       </div>
     </Modal>}
@@ -182,7 +192,7 @@ function Overview({ falls, residents, now, onClip, onAttend, onGo, onNotify }: {
   onGo: (v: View) => void; onNotify: (id: string) => void;
 }) {
   const s = dayStats(falls);
-  const name = (id: string) => residents.find(r => r.id === id)?.name ?? '';
+  const name = (id: string) => residentName(residents, id);
   const counts = { active: 0, resting: 0, away: 0, fall: 0 };
   residents.forEach(r => counts[r.status]++);
   const rooms = [...s.byRoom].sort((a, b) => b[1] - a[1]);
@@ -197,8 +207,8 @@ function Overview({ falls, residents, now, onClip, onAttend, onGo, onNotify }: {
       <div className="p-kpi"><strong className="num">{s.total}</strong><span className="p-badge" data-tone={s.open ? 'bad' : 'good'}>{s.open} open</span></div>
       <HourBars hours={hours} />
       <ul className="p-list">
-        {['East', 'West', 'Garden'].map(w => { const n = falls.filter(f => f.wing === w).length;
-          return <li key={w}><span><Icon name="room" size={16} />{w} wing</span><b className="num">{n}</b><span className="p-muted">{s.total ? Math.round(n / s.total * 100) : 0}%</span></li>; })}
+        {['East', 'West', 'Garden', DETECTOR.wing].map(w => { const n = falls.filter(f => f.wing === w).length;
+          return <li key={w}><span><Icon name="room" size={16} />{wingLabel(w)}</span><b className="num">{n}</b><span className="p-muted">{s.total ? Math.round(n / s.total * 100) : 0}%</span></li>; })}
       </ul>
     </section>
 
@@ -218,7 +228,7 @@ function Overview({ falls, residents, now, onClip, onAttend, onGo, onNotify }: {
       <ul className="p-list p-list--plain">
         <li><span>Alerts attended</span><b className="num">{s.total - s.open}/{s.total}</b><span className="p-badge" data-tone={attendedPct === 100 ? 'good' : 'bad'}>{attendedPct}%</span></li>
         <li><span>Under 2 minutes</span><b className="num">{falls.filter(f => (responseSeconds(f) ?? 1e9) <= 120).length}</b><span /></li>
-        <li><span>Repeat-fall residents</span><b className="num">{[...new Set(falls.map(f => f.residentId))].filter(id => falls.filter(f => f.residentId === id).length > 1).length}</b><span /></li>
+        <li><span>Repeat-fall residents</span><b className="num">{[...new Set(falls.map(f => f.residentId))].filter(id => id !== DETECTOR_ID && falls.filter(f => f.residentId === id).length > 1).length}</b><span /></li>
       </ul>
       <div className="p-meter" aria-label={`${attendedPct}% of alerts attended`}><i style={{ width: `${attendedPct}%` }} /></div>
     </section>
@@ -234,10 +244,10 @@ function Overview({ falls, residents, now, onClip, onAttend, onGo, onNotify }: {
           <span className="p-alerts__state">{f.acknowledgedAt ? `Attended · ${duration(responseSeconds(f)!)}` : 'Waiting'}</span>
           <span className="p-alerts__conf num">{Math.round(f.confidence * 100)}%</span>
           <div className="p-alerts__actions">
-            <button type="button" className="p-btn p-btn--glass p-btn--sm" onClick={() => onClip(f)}><Icon name="play" size={14} />5s clip</button>
+            <button type="button" className="p-btn p-btn--glass p-btn--sm" onClick={() => onClip(f)}><Icon name="play" size={14} />Clip</button>
             {!f.acknowledgedAt
               ? <button type="button" className="p-btn p-btn--lime p-btn--sm" onClick={() => onAttend(f)}>Respond</button>
-              : <button type="button" className="p-btn p-btn--glass p-btn--sm" onClick={() => onNotify(f.residentId)}>Notify family</button>}
+              : f.residentId !== DETECTOR_ID && <button type="button" className="p-btn p-btn--glass p-btn--sm" onClick={() => onNotify(f.residentId)}>Notify family</button>}
           </div>
         </li>)}
         {!falls.length && <li className="p-empty">No falls today.</li>}
@@ -281,10 +291,10 @@ function HourBars({ hours }: { hours: number[] }) {
 function Heatmap({ falls, upTo }: { falls: FallEvent[]; upTo: number }) {
   const blocks = [0, 3, 6, 9, 12, 15, 18, 21];
   const cell = (room: string, h: number) => falls.filter(f => f.room === room && Math.floor(new Date(f.at).getHours() / 3) * 3 === h).length;
-  const max = Math.max(1, ...ROOMS.flatMap(r => blocks.map(h => cell(r, h))));
+  const max = Math.max(1, ...ALL_ROOMS.flatMap(r => blocks.map(h => cell(r, h))));
   return <div className="p-heat" role="table" aria-label="Falls by room and time of day">
     <div role="row" className="p-heat__row p-heat__row--head"><span role="columnheader" />{blocks.map(h => <span role="columnheader" key={h}>{String(h).padStart(2, '0')}</span>)}</div>
-    {ROOMS.map(room => <div role="row" className="p-heat__row" key={room}>
+    {ALL_ROOMS.map(room => <div role="row" className="p-heat__row" key={room}>
       <span role="rowheader">{room}</span>
       {blocks.map(h => { const n = cell(room, h); return <span role="cell" key={h} className="p-heat__cell" data-future={h > upTo ? 'true' : undefined}
         style={{ ['--a' as string]: n ? 0.25 + (n / max) * 0.75 : 0 }} title={`Room ${room}, ${h}:00–${h + 3}:00: ${n} falls`}>{n || ''}</span>; })}
@@ -298,24 +308,36 @@ function LiveMonitor({ residents, falls, now, onClip, onAttend, onNotify }: {
   residents: Resident[]; falls: FallEvent[]; now: number; onClip: (f: FallEvent) => void; onAttend: (f: FallEvent) => void; onNotify: (id: string) => void;
 }) {
   const [wing, setWing] = useState('All');
-  const list = residents.filter(r => wing === 'All' || r.wing === wing).sort((a, b) => Number(b.status === 'fall') - Number(a.status === 'fall'));
+  // The detector is one more monitored room: it alerts when the live camera or an upload finds a fall.
+  const detectorFalls = falls.filter(f => f.residentId === DETECTOR_ID);
+  const detectorLast = detectorFalls[0];
+  const detector: Resident = { ...DETECTOR, status: detectorFalls.some(f => !f.acknowledgedAt) ? 'fall' : 'active', since: detectorLast?.at ?? now };
+  const rooms = [...residents, detector];
+  const list = rooms.filter(r => wing === 'All' || r.wing === wing).sort((a, b) => Number(b.status === 'fall') - Number(a.status === 'fall'));
   return <div className="p-stack">
     <div className="p-pagehead">
-      <div><h2>Live monitor</h2><p className="p-muted"><span className="p-live-dot" />Updating in real time · {residents.length} rooms</p></div>
-      <div className="p-seg" role="tablist" aria-label="Wing">{['All', 'East', 'West', 'Garden'].map(w =>
+      <div><h2>Live monitor</h2><p className="p-muted"><span className="p-live-dot" />Updating in real time · {rooms.length} rooms</p></div>
+      <div className="p-seg" role="tablist" aria-label="Wing">{['All', 'East', 'West', 'Garden', DETECTOR.wing].map(w =>
         <button key={w} type="button" role="tab" aria-selected={wing === w} className="p-seg__item" data-on={wing === w ? 'true' : undefined} onClick={() => setWing(w)}>{w}</button>)}</div>
     </div>
     <div className="p-rooms-grid">
       {list.map(r => { const latest = falls.find(f => f.residentId === r.id && !f.acknowledgedAt);
+        const isDetector = r.id === DETECTOR_ID;
         return <article key={r.id} className="p-room" data-status={r.status}>
-          <header><span className="p-room__no">Room {r.room}</span><StatusPill status={r.status} /></header>
-          <div className="p-room__who"><Initials name={r.name} tone={Number(r.id.slice(1))} /><div><strong>{r.name}</strong><small>{r.age} yrs · {r.wing} wing</small></div></div>
-          <p className="p-room__since">{r.status === 'fall' ? 'Fall detected' : 'Status updated'} {ago(r.since, now)}</p>
+          <header><span className="p-room__no">Room {r.room}</span><StatusPill status={r.status} label={isDetector && r.status !== 'fall' ? 'Monitoring' : undefined} /></header>
+          <div className="p-room__who"><Initials name={r.name} tone={Number(r.id.slice(1))} /><div><strong>{r.name}</strong>
+            <small>{isDetector ? 'Live camera and uploaded videos' : `${r.age} yrs · ${wingLabel(r.wing)}`}</small></div></div>
+          <p className="p-room__since">{isDetector
+            ? (detectorLast ? `${r.status === 'fall' ? 'Fall detected' : 'Last fall'} ${ago(r.since, now)}` : 'Watching for falls')
+            : `${r.status === 'fall' ? 'Fall detected' : 'Status updated'} ${ago(r.since, now)}`}</p>
           <footer>
             {latest ? <>
               <button type="button" className="p-btn p-btn--sm" onClick={() => onClip(latest)}><Icon name="play" size={14} />Clip</button>
               <button type="button" className="p-btn p-btn--primary p-btn--sm" onClick={() => onAttend(latest)}>Respond</button>
-            </> : <button type="button" className="p-btn p-btn--sm" onClick={() => onNotify(r.id)}><Icon name="send" size={14} />Update family</button>}
+            </> : isDetector
+              ? (detectorLast ? <button type="button" className="p-btn p-btn--sm" onClick={() => onClip(detectorLast)}><Icon name="play" size={14} />Last clip</button>
+                : <small className="p-muted">No falls detected yet</small>)
+              : <button type="button" className="p-btn p-btn--sm" onClick={() => onNotify(r.id)}><Icon name="send" size={14} />Update family</button>}
           </footer>
         </article>; })}
     </div>
@@ -324,30 +346,33 @@ function LiveMonitor({ residents, falls, now, onClip, onAttend, onNotify }: {
 
 /* ---------------- Incidents ---------------- */
 
-function Incidents({ falls, residents, now, onClip, onAttend }: {
+function Incidents({ falls, residents, now, onClip, onAttend, clipInfo, clipsUnavailable }: {
   falls: FallEvent[]; residents: Resident[]; now: number; onClip: (f: FallEvent) => void; onAttend: (f: FallEvent) => void;
+  clipInfo: ClipList | null; clipsUnavailable: boolean;
 }) {
   const [filter, setFilter] = useState<'all' | 'open' | 'attended'>('all');
   const [room, setRoom] = useState('all');
   const list = falls.filter(f => (filter === 'all' || (filter === 'open') === !f.acknowledgedAt) && (room === 'all' || f.room === room));
-  const name = (id: string) => residents.find(r => r.id === id)?.name ?? '';
+  const name = (id: string) => residentName(residents, id);
   return <div className="p-stack">
     <div className="p-pagehead">
-      <div><h2>Fall incidents</h2><p className="p-muted">{falls.length} today · {falls.filter(f => !f.acknowledgedAt).length} open</p></div>
+      <div><h2>Fall incidents</h2><p className="p-muted">{falls.length} today · {falls.filter(f => !f.acknowledgedAt).length} open</p>
+        <p className="p-muted p-small">{clipInfo
+          ? `Detector clips: ${bytesLabel(clipInfo.storage_used_bytes)} of ${bytesLabel(clipInfo.storage_cap_bytes)} used, deleted after ${Math.round(clipInfo.retention_seconds / 3600)} h.`
+          : clipsUnavailable ? 'The detector API is not running, so real clips cannot be loaded.' : ''}</p></div>
       <div className="p-filters">
         <div className="p-seg">{(['all', 'open', 'attended'] as const).map(k => <button key={k} type="button" className="p-seg__item" data-on={filter === k ? 'true' : undefined} aria-pressed={filter === k} onClick={() => setFilter(k)}>{k[0].toUpperCase() + k.slice(1)}</button>)}</div>
         <label className="p-select"><span className="sr-only">Room</span>
-          <select value={room} onChange={e => setRoom(e.target.value)}><option value="all">All rooms</option>{ROOMS.map(r => <option key={r} value={r}>Room {r}</option>)}</select></label>
+          <select value={room} onChange={e => setRoom(e.target.value)}><option value="all">All rooms</option>{ALL_ROOMS.map(r => <option key={r} value={r}>Room {r}</option>)}</select></label>
         <button type="button" className="p-btn" onClick={() => downloadCsv(list, residents, 'incidents')}><Icon name="download" size={16} />Export</button>
       </div>
     </div>
-    <CameraClips />
     <section className="p-card p-card--flush">
       <table className="p-table">
         <thead><tr><th>Resident</th><th>Room</th><th>Time</th><th>Confidence</th><th>Status</th><th>Response</th><th><span className="sr-only">Actions</span></th></tr></thead>
         <tbody>{list.map(f => <tr key={f.id} data-open={!f.acknowledgedAt ? 'true' : undefined}>
           <td><span className="p-cell-who"><Initials name={name(f.residentId)} tone={Number(f.residentId.slice(1))} />{name(f.residentId)}</span></td>
-          <td>{f.room} <span className="p-muted">· {f.wing}</span></td>
+          <td>{f.room} <span className="p-muted">· {f.wing}</span>{f.clipId && <span className="p-badge" data-tone="info" title="Found by the detector, with a recorded clip">Detected</span>}</td>
           <td className="num">{clock(f.at)} <span className="p-muted">· {ago(f.at, now)}</span></td>
           <td className="num">{Math.round(f.confidence * 100)}%</td>
           <td>{f.acknowledgedAt ? <span className="p-badge" data-tone="good">Attended</span> : <span className="p-badge" data-tone="bad">Open</span>}</td>
@@ -372,7 +397,7 @@ function Reports({ falls: todayFalls, residents }: { falls: FallEvent[]; residen
   const s = dayStats(falls);
   const rooms = [...s.byRoom].sort((a, b) => b[1] - a[1]);
   const max = Math.max(1, ...rooms.map(r => r[1]));
-  const name = (id: string) => residents.find(r => r.id === id)?.name ?? '';
+  const name = (id: string) => residentName(residents, id);
   const byResident = useMemo(() => {
     const m = new Map<string, number>(); falls.forEach(f => m.set(f.residentId, (m.get(f.residentId) ?? 0) + 1));
     return [...m].sort((a, b) => b[1] - a[1]);
@@ -411,7 +436,7 @@ function Reports({ falls: todayFalls, residents }: { falls: FallEvent[]; residen
       </section>
       <section className="p-card">
         <header className="p-card__head"><span>Residents with falls</span></header>
-        <ul className="p-list p-list--plain">{byResident.map(([id, n]) => <li key={id}><span className="p-cell-who"><Initials name={name(id)} tone={Number(id.slice(1))} />{name(id)}</span><b className="num">{n}</b>{n > 1 ? <span className="p-badge" data-tone="bad">Review care plan</span> : <span />}</li>)}</ul>
+        <ul className="p-list p-list--plain">{byResident.filter(([id]) => id !== DETECTOR_ID).map(([id, n]) => <li key={id}><span className="p-cell-who"><Initials name={name(id)} tone={Number(id.slice(1))} />{name(id)}</span><b className="num">{n}</b>{n > 1 ? <span className="p-badge" data-tone="bad">Review care plan</span> : <span />}</li>)}</ul>
       </section>
       <section className="p-card">
         <header className="p-card__head"><span>Incident log</span></header>
@@ -471,11 +496,11 @@ function AttendDialog({ fall, resident, by, onClose, onNotify }: { fall: FallEve
         {outcomes.map(o => <label key={o} className="p-chipopt"><input type="radio" name="outcome" checked={note === o} onChange={() => setNote(o)} /><span>{o}</span></label>)}
       </fieldset>
       <label className="p-field"><span>Note (optional)</span><input value={note} onChange={e => setNote(e.target.value)} placeholder="What happened?" /></label>
-      <label className="p-check"><input type="checkbox" checked={tell} onChange={e => setTell(e.target.checked)} /><span>Notify {resident.family} after saving</span></label>
+      {resident.family && <label className="p-check"><input type="checkbox" checked={tell} onChange={e => setTell(e.target.checked)} /><span>Notify {resident.family} after saving</span></label>}
     </div>
     <div className="p-modal__foot">
       <button type="button" className="p-btn" onClick={onClose}>Cancel</button>
-      <button type="button" className="p-btn p-btn--primary" onClick={() => { acknowledgeFall(fall.id, by, note); onClose(); if (tell) onNotify(); }}><Icon name="check" size={16} />Mark attended</button>
+      <button type="button" className="p-btn p-btn--primary" onClick={() => { acknowledgeFall(fall.id, by, note); onClose(); if (tell && resident.family) onNotify(); }}><Icon name="check" size={16} />Mark attended</button>
     </div>
   </Modal>;
 }

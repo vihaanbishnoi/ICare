@@ -2,11 +2,13 @@
  * Care portal demo data layer.
  *
  * There is no resident/room/account backend yet, so this module simulates a
- * facility feed in the browser. Fall events here are generated demo data, not
- * detector output. Messages and incidents are shared between tabs through
+ * facility feed in the browser. Fall events here are generated demo data, except
+ * those with a `clipId`: they come from the real detector (live camera or uploaded
+ * video) through the local API and play their recorded clip. Messages and incidents are shared between tabs through
  * localStorage + BroadcastChannel so a manager tab and a family tab stay in sync.
  */
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import type { Clip } from '../types';
 
 export type Role = 'family' | 'manager';
 export type ResidentStatus = 'active' | 'resting' | 'away' | 'fall';
@@ -20,6 +22,8 @@ export interface FallEvent {
   id: string; residentId: string; room: string; wing: string; at: number;
   confidence: number; acknowledgedAt: number | null; acknowledgedBy: string | null;
   note: string | null; clipSeed: number;
+  /** Set for falls found by the real detector: the stored clip to play. Absent for simulated falls. */
+  clipId?: string | null;
 }
 
 export interface FamilyMessage {
@@ -45,6 +49,21 @@ const RESIDENTS_SEED: Omit<Resident, 'status' | 'since'>[] = [
 ];
 
 export const ROOMS = RESIDENTS_SEED.map(r => r.room);
+
+/**
+ * Real detections have no resident or room, so they are attributed to one clearly
+ * labelled monitored room. It is not a person: it is never in the resident list, so
+ * resident counts, family messaging and the fall simulator do not include it.
+ */
+export const DETECTOR_ID = 'det';
+export const DETECTOR: Resident = {
+  id: DETECTOR_ID, name: 'Fall detector', age: 0, room: 'DET', wing: 'Detector',
+  status: 'active', since: 0, family: '', familyEmail: '',
+};
+export const ALL_ROOMS = [...ROOMS, DETECTOR.room];
+export const wingLabel = (wing: string) => wing === DETECTOR.wing ? 'Detector' : `${wing} wing`;
+export const residentName = (residents: Resident[], id: string) =>
+  residents.find(r => r.id === id)?.name ?? (id === DETECTOR_ID ? DETECTOR.name : '');
 
 function rand(seed: number) {
   let s = seed % 2147483647; if (s <= 0) s += 2147483646;
@@ -151,6 +170,25 @@ export function simulateFall(residentId?: string) {
     residents: state.residents.map(r => r.id === res.id ? { ...r, status: 'fall', since: at } : r) });
 }
 
+/**
+ * Add the real detector's clips (from GET /clips) to today's fall feed, once each.
+ * They appear everywhere simulated falls do: alerts, live monitor, incidents, reports.
+ * Only clips created today are added; an alert is raised for recent ones by the caller.
+ */
+export function syncDetectorClips(clips: Clip[]) {
+  const known = new Set(state.falls.map(f => f.id));
+  const from = dayStart(0);
+  const added: FallEvent[] = clips.flatMap(c => {
+    const at = Date.parse(c.created_at_utc);
+    const id = `clip-${c.clip_id}`;
+    if (known.has(id) || !Number.isFinite(at) || at < from) return [];
+    return [{ id, residentId: DETECTOR_ID, room: DETECTOR.room, wing: DETECTOR.wing, at, confidence: c.confidence,
+      acknowledgedAt: null, acknowledgedBy: null, note: null, clipSeed: 0, clipId: c.clip_id }];
+  });
+  if (!added.length) return;
+  commit({ ...state, falls: [...added, ...state.falls].sort((a, b) => b.at - a.at) });
+}
+
 /** Light background drift so statuses look live. Only one tab (the manager) drives it. */
 export function useSimulation(enabled: boolean) {
   useEffect(() => {
@@ -195,6 +233,10 @@ export function ago(at: number, ref = now()) {
 export const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 export const responseSeconds = (f: FallEvent) => f.acknowledgedAt ? Math.round((f.acknowledgedAt - f.at) / 1000) : null;
 export const duration = (s: number) => s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+
+const KB = 1024;
+export const bytesLabel = (bytes: number) => bytes >= KB ** 3 ? `${+(bytes / KB ** 3).toFixed(1)} GB`
+  : `${(bytes / KB ** 2).toFixed(bytes < 10 * KB ** 2 ? 1 : 0)} MB`;
 
 export const STATUS_LABEL: Record<ResidentStatus, string> = { active: 'Active', resting: 'Resting', away: 'Out of room', fall: 'Fall alert' };
 
