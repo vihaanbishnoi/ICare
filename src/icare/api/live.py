@@ -1,7 +1,9 @@
 """One owned live session, no frame queue, persistent incident history.
 
 The browser sends at most one frame at a time. Admission rejects extra in-flight
-frames rather than accumulating stale camera work. Camera images are never saved.
+frames rather than accumulating stale camera work. Camera images are not stored
+continuously: a few seconds stay in memory, and a ~4 s clip around a detected fall
+is saved (see icare.api.clips) and expires after a day.
 """
 from datetime import datetime, timedelta, timezone
 import math
@@ -9,6 +11,7 @@ import secrets
 import threading
 import time
 
+from icare.api.clips import LiveClipRecorder
 from icare.api.incidents import PersonIncidents
 from icare.api.schemas import Pose, Prediction
 from icare.api.store import utc_now
@@ -22,8 +25,8 @@ class LiveError(Exception):
 
 
 class LiveManager:
-    def __init__(self, store, engine, settings):
-        self.store, self.engine, self.settings = store, engine, settings
+    def __init__(self, store, engine, settings, clips=None):
+        self.store, self.engine, self.settings, self.clips = store, engine, settings, clips
         self.lock = threading.RLock()
         self.session = None
         self.store.fail_interrupted_live()
@@ -47,7 +50,9 @@ class LiveManager:
                        'incidents': PersonIncidents(confirmations=self.settings.fall_confirmations),
                        'started': time.monotonic(), 'last_activity': time.monotonic(),
                        'last_timestamp': None, 'frames': 0, 'inflight': False, 'closing': False,
-                       'idle': threading.Event()}
+                       'idle': threading.Event(),
+                       'recorder': (LiveClipRecorder(self.clips, owner, document['session_id'])
+                                    if self.clips is not None else None)}
             session['idle'].set()
             self.session = session  # Reserve before loading the model-side session.
         try:
@@ -103,6 +108,9 @@ class LiveManager:
                 if self.session is not session or session['cancel'].is_set():
                     raise LiveError(409, 'session_closed', 'The camera session stopped.')
                 incidents, people = [], []
+                recorder = session['recorder']
+                if recorder is not None:
+                    recorder.add_frame(timestamp, data)  # includes this frame in any clip it opens
                 for person in record['people']:
                     track_id = person['track_id']
                     prediction = predictions.get(track_id)
@@ -110,6 +118,10 @@ class LiveManager:
                         incident = {'incident_id': secrets.token_urlsafe(8), 'session_id': session['session_id'],
                                     'track_id': track_id, 'detected_at_seconds': prediction['timestamp_seconds'],
                                     'confidence': prediction['fall_probability'], 'created_at_utc': utc_now()}
+                        if recorder is not None:
+                            incident['clip_id'] = recorder.trigger(
+                                clip_id=incident['incident_id'], track_id=track_id,
+                                detected_at=incident['detected_at_seconds'], confidence=incident['confidence'])
                         self.store.add_live_incident(incident)
                         incidents.append(incident)
                     people.append({**person, 'pose': poses[track_id], 'prediction': prediction,
@@ -143,6 +155,8 @@ class LiveManager:
             session['closing'] = True
             session['cancel'].set()
         session['idle'].wait(timeout=6)
+        if session['recorder'] is not None:
+            session['recorder'].close()  # save any fall clip still waiting for its last second
         try:
             self.engine.stop_stream()
         except Exception:

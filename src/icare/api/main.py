@@ -23,10 +23,11 @@ from starlette.formparsers import MultiPartException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 
+from icare.api.clips import ClipManager
 from icare.api.config import Settings
 from icare.api.engine import Engine, load_real_engine
 from icare.api.results import job_url
-from icare.api.schemas import Incident, Job
+from icare.api.schemas import Clip, ClipList, Incident, Job
 from icare.api.schemas import LiveFrame, LiveHistoryResponse, LiveSession
 from icare.api.store import ACTIVE_STATES, Store, utc_now
 from icare.api.video import InvalidVideo, mp4_duration_seconds
@@ -64,16 +65,19 @@ def create_app(settings: Settings | None = None, engine: Any = _NOT_LOADED) -> F
         state.store.fail_interrupted_jobs()
         state.store.reconcile_admissions(settings.data_dir / 'jobs')
         state.admission_salt = state.store.admission_salt()
-        state.live = LiveManager(state.store, state.engine, settings)
+        state.clips = ClipManager.from_settings(state.store, settings)
+        state.clips.startup()
+        state.live = LiveManager(state.store, state.engine, settings, state.clips)
         for folder in (settings.data_dir / 'jobs').glob('*'):
             if folder.is_dir() and state.store.get_job(folder.name) is None:
                 remove_job_files(settings, folder.name)
+                state.clips.delete_for_source(folder.name)
         state.runner = JobRunner(
             state.store, state.engine, settings.data_dir / "jobs", settings.job_timeout_seconds,
-            settings.result_reserve_bytes, settings.fall_confirmations,
+            settings.result_reserve_bytes, settings.fall_confirmations, state.clips,
         )
         state.runner.start()
-        remove_expired(state.store, settings)
+        remove_expired(state.store, settings, state.clips)
         async def cleanup_loop():
             last_cleanup = time.monotonic()
             while True:
@@ -81,7 +85,7 @@ def create_app(settings: Settings | None = None, engine: Any = _NOT_LOADED) -> F
                 try:
                     await asyncio.to_thread(state.live.expire)
                     if time.monotonic() - last_cleanup >= settings.cleanup_interval_seconds:
-                        remove_expired(state.store, settings)
+                        remove_expired(state.store, settings, state.clips)
                         last_cleanup = time.monotonic()
                 except Exception:
                     log.exception("Scheduled job cleanup failed")
@@ -94,6 +98,7 @@ def create_app(settings: Settings | None = None, engine: Any = _NOT_LOADED) -> F
                 await cleanup_task
             await asyncio.to_thread(state.live.close)
             state.runner.stop()
+            await asyncio.to_thread(state.clips.close)
             state.store.close()
             if state.engine is not None:
                 state.engine.close()
@@ -104,7 +109,7 @@ def create_app(settings: Settings | None = None, engine: Any = _NOT_LOADED) -> F
     @app.middleware("http")
     async def private_results_cache(request: Request, call_next):
         response = await call_next(request)
-        if request.url.path.startswith(("/api/v1/jobs", "/api/v1/live")):
+        if request.url.path.startswith(("/api/v1/jobs", "/api/v1/live", "/api/v1/clips")):
             response.headers["Cache-Control"] = "private, no-store"
         return response
 
@@ -171,6 +176,7 @@ def owned_job(job_id: str, request: Request, owner_key: str = Depends(owner)) ->
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=request.app.state.settings.retention_seconds)
     if job["state"] not in ACTIVE_STATES and datetime.fromisoformat(job["created_at_utc"]) < cutoff:
         remove_job_files(request.app.state.settings, job_id)
+        request.app.state.clips.delete_for_source(job_id)
         request.app.state.store.delete_job(job_id)
         raise not_found()
     return job
@@ -220,7 +226,7 @@ def new_job(request: Request, owner_key: str,
 
 def reserve_job(request: Request, owner_key: str) -> str:
     settings = request.app.state.settings
-    remove_expired(request.app.state.store, settings)
+    remove_expired(request.app.state.store, settings, request.app.state.clips)
     job_id = secrets.token_urlsafe(16)
     # Hash the trusted ASGI peer address with a private persisted salt; do not
     # accept arbitrary client X-Forwarded-For headers here.
@@ -248,11 +254,15 @@ def remove_job_files(settings: Settings, job_id: str) -> None:
     shutil.rmtree(target, ignore_errors=True)
 
 
-def remove_expired(store: Store, settings: Settings) -> None:
+def remove_expired(store: Store, settings: Settings, clips: ClipManager | None = None) -> None:
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=settings.retention_seconds)
     for job in store.expired_jobs(cutoff.isoformat()):
         remove_job_files(settings, job["job_id"])
+        if clips is not None:
+            clips.delete_for_source(job["job_id"])
         store.delete_job(job["job_id"])
+    if clips is not None:
+        clips.remove_expired()  # clips keep their own 24 h clock
     receipt_cutoff = (datetime.now(timezone.utc) - timedelta(seconds=settings.admission_window_seconds)).isoformat()
     store.prune_admissions(receipt_cutoff)
     store.prune_live_history(cutoff.isoformat())
@@ -446,5 +456,42 @@ def delete_job(request: Request, job: dict = Depends(owned_job)) -> Response:
         request.app.state.runner.cancel(job["job_id"])
         return JSONResponse(job_document(store.get_job(job["job_id"])), status_code=200)
     remove_job_files(settings, job["job_id"])
+    request.app.state.clips.delete_for_source(job["job_id"])
     store.delete_job(job["job_id"])
+    return Response(status_code=204)
+
+
+# ---------- fall clips ----------
+
+def owned_clip(clip_id: str, request: Request, owner_key: str = Depends(owner)) -> dict:
+    row = request.app.state.clips.owned(clip_id, owner_key)
+    if row is None:
+        raise ApiError(404, "not_found", "No such clip for this browser session.")
+    return row
+
+
+@router.get("/clips", response_model=ClipList)
+def list_clips(request: Request, owner_key: str = Depends(owner)) -> dict:
+    """This browser's fall clips, newest first, with the storage cap and expiry in force."""
+    return request.app.state.clips.listing(owner_key)
+
+
+@router.get("/clips/{clip_id}", response_model=Clip)
+def get_clip(request: Request, clip: dict = Depends(owned_clip)) -> dict:
+    return request.app.state.clips.document(clip)
+
+
+@router.get("/clips/{clip_id}/video")
+def get_clip_video(request: Request, clip: dict = Depends(owned_clip)) -> FileResponse:
+    if clip["status"] == "pending":
+        raise ApiError(409, "clip_pending", "The clip is still being saved.")
+    path = request.app.state.clips.path_of(clip)
+    if path is None:
+        raise ApiError(404, "clip_unavailable", clip["error_message"] or "This clip is no longer available.")
+    return FileResponse(path, media_type=clip["media_type"])  # Starlette handles Range
+
+
+@router.delete("/clips/{clip_id}", status_code=204, dependencies=[Depends(same_origin)])
+def delete_clip(request: Request, clip: dict = Depends(owned_clip)) -> Response:
+    request.app.state.clips.delete(clip["clip_id"])
     return Response(status_code=204)

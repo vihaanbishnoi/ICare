@@ -28,7 +28,7 @@ export function LivePanel() {
         <span className="signal" data-state={signal} aria-hidden="true" />
         <div>
           <strong role="status">{status}</strong>
-          <p>Runs on this computer's CPU. Camera images are never saved.</p>
+          <p>Runs on this computer's CPU. Camera images are not saved, except a short clip around each detected fall, kept for 24 hours.</p>
         </div>
       </div>
       <div className="controlbar__actions">
@@ -100,12 +100,12 @@ export function LivePanel() {
             <h2>Incident history</h2>
             <button type="button" className="button button--small" onClick={() => void live.refreshHistory()}>Refresh</button>
           </div>
-          <p className="hint">Private to this browser session. Only times and probabilities are kept, no video.</p>
+          <p className="hint">Private to this browser session. Times and probabilities are kept, plus a clip of about 4 seconds for each fall.</p>
           {live.incidents.length > 0 && <>
             <h3>This session</h3>
             <IncidentTable rows={live.incidents.map(item => ({
               id: item.incident_id, person: item.track_id, when: new Date(item.created_at_utc).toLocaleTimeString(),
-              at: item.detected_at_seconds, confidence: item.confidence }))} />
+              at: item.detected_at_seconds, confidence: item.confidence, clipId: item.clip_id }))} />
           </>}
           {live.history.length === 0
             ? <p className="hint">No earlier camera sessions.</p>
@@ -118,7 +118,7 @@ export function LivePanel() {
                 {session.error_message && <p className="hint">{session.error_message}</p>}
                 {session.incidents.length > 0 && <IncidentTable rows={session.incidents.map(item => ({
                   id: item.incident_id, person: item.track_id, when: new Date(item.created_at_utc).toLocaleTimeString(),
-                  at: item.detected_at_seconds, confidence: item.confidence }))} />}
+                  at: item.detected_at_seconds, confidence: item.confidence, clipId: item.clip_id }))} />}
                 <p className="provenance">{session.model_version}</p>
               </details>
             </li>)}</ul>}

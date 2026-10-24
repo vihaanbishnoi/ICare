@@ -48,6 +48,25 @@ CREATE TABLE IF NOT EXISTS live_sessions (
     created_at_utc TEXT NOT NULL, ended_at_utc TEXT, model_version TEXT,
     frames_processed INTEGER NOT NULL DEFAULT 0, error_message TEXT
 );
+CREATE TABLE IF NOT EXISTS clips (
+    clip_id TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    source_kind TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    track_id INTEGER,
+    status TEXT NOT NULL,
+    detected_at_seconds REAL NOT NULL,
+    confidence REAL NOT NULL,
+    clip_start_seconds REAL,
+    duration_seconds REAL,
+    created_at_utc TEXT NOT NULL,
+    file_name TEXT,
+    media_type TEXT,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT
+);
+CREATE INDEX IF NOT EXISTS clips_owner ON clips(owner, created_at_utc);
+CREATE INDEX IF NOT EXISTS clips_source ON clips(source_id);
 CREATE TABLE IF NOT EXISTS live_incidents (
     incident_id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL REFERENCES live_sessions(session_id) ON DELETE CASCADE,
@@ -70,11 +89,13 @@ class Store:
         with self._lock:
             self._db.execute("PRAGMA foreign_keys = ON")
             self._db.executescript(SCHEMA)
-            # Databases created before multi-person tracking lack the person column.
+            # Databases created before multi-person tracking / fall clips lack these columns.
             for table in ('incidents', 'live_incidents'):
                 columns = {row[1] for row in self._db.execute(f'PRAGMA table_info({table})')}
                 if 'track_id' not in columns:
                     self._db.execute(f'ALTER TABLE {table} ADD COLUMN track_id INTEGER')
+                if 'clip_id' not in columns:
+                    self._db.execute(f'ALTER TABLE {table} ADD COLUMN clip_id TEXT')
             self._db.commit()
 
     def close(self) -> None:
@@ -212,7 +233,7 @@ class Store:
                     (state, utc_now(), frames, error, session_id))
 
     def add_live_incident(self, incident):
-        keys = ('incident_id', 'session_id', 'track_id', 'detected_at_seconds', 'confidence', 'created_at_utc')
+        keys = ('incident_id', 'session_id', 'track_id', 'clip_id', 'detected_at_seconds', 'confidence', 'created_at_utc')
         self._write(f"INSERT INTO live_incidents ({','.join(keys)}) VALUES ({','.join('?' * len(keys))})",
                     tuple(incident.get(key) for key in keys))
 
@@ -268,3 +289,48 @@ class Store:
             (job_id, incident_id),
         )
         return rows[0] if rows else None
+
+    # ----- fall clips (the files themselves are managed by icare.api.clips)
+
+    CLIP_COLUMNS = ('clip_id', 'owner', 'source_kind', 'source_id', 'track_id', 'status',
+                    'detected_at_seconds', 'confidence', 'clip_start_seconds', 'duration_seconds',
+                    'created_at_utc', 'file_name', 'media_type', 'size_bytes', 'error_message')
+
+    def add_clip(self, clip: dict[str, Any]) -> None:
+        keys = [key for key in self.CLIP_COLUMNS if key in clip]
+        self._write(f"INSERT INTO clips ({','.join(keys)}) VALUES ({','.join('?' * len(keys))})",
+                    tuple(clip[key] for key in keys))
+
+    def update_clip(self, clip_id: str, **fields: Any) -> bool:
+        assignments = ", ".join(f"{name} = ?" for name in fields)
+        return self._write(f"UPDATE clips SET {assignments} WHERE clip_id = ?", (*fields.values(), clip_id)) == 1
+
+    def get_clip(self, clip_id: str) -> dict[str, Any] | None:
+        rows = self._read("SELECT * FROM clips WHERE clip_id = ?", (clip_id,))
+        return rows[0] if rows else None
+
+    def list_clips(self, owner: str) -> list[dict[str, Any]]:
+        return self._read("SELECT * FROM clips WHERE owner = ? ORDER BY created_at_utc DESC", (owner,))
+
+    def clips_for_source(self, source_id: str) -> list[dict[str, Any]]:
+        return self._read("SELECT * FROM clips WHERE source_id = ?", (source_id,))
+
+    def clips_created_before(self, created_before_utc: str) -> list[dict[str, Any]]:
+        return self._read("SELECT * FROM clips WHERE created_at_utc < ?", (created_before_utc,))
+
+    def ready_clips_oldest_first(self) -> list[dict[str, Any]]:
+        return self._read("SELECT * FROM clips WHERE status = 'ready' ORDER BY created_at_utc, clip_id")
+
+    def clip_bytes(self) -> int:
+        return self._read("SELECT COALESCE(SUM(size_bytes), 0) AS n FROM clips")[0]["n"]
+
+    def delete_clip(self, clip_id: str) -> None:
+        self._write("DELETE FROM clips WHERE clip_id = ?", (clip_id,))
+
+    def clip_file_names(self) -> set[str]:
+        return {row["file_name"] for row in self._read("SELECT file_name FROM clips WHERE file_name IS NOT NULL")}
+
+    def fail_interrupted_clips(self) -> None:
+        """A live clip still pending after a restart can never be completed."""
+        self._write("UPDATE clips SET status = 'failed', "
+                    "error_message = 'The server restarted before the clip was saved.' WHERE status = 'pending'")

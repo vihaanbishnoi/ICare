@@ -17,6 +17,7 @@ The public website is a static preview. Run locally for camera and video inferen
 - **Video analysis:** MP4 uploads, progress/cancellation, synchronized playback, and JSON/CSV reports.
 - **Dashboard:** responsive layout, light/dark themes, and keyboard-accessible mode selection.
 - **Multiple people:** every person tracked with their own ID, pose window and fall alerts.
+- **Fall clips:** a ~4 second video with its timestamps for every detected fall, in a 1 GB store that expires after 24 hours.
 - **Backend:** isolated model execution, bounded queues, session-scoped results, and duplicate-alert suppression.
 
 ## Stack
@@ -72,6 +73,30 @@ ICare does not label postures such as sitting, bending or lying: PoseC3D outputs
 only P(Fall), and posture rules would need labelled data to validate. Per person,
 the reported states are warming up (fewer than six poses spanning 2 s), monitoring,
 and fall recorded (until re-armed).
+
+## Fall clips
+
+Every incident, from an uploaded video or a live camera, gets a clip of about
+4 seconds: 3 s before the detection timestamp and 1 s after it (the window slides
+to stay 4 s at the start or end of a video). The frontend plays it from
+`GET /api/v1/clips/{clip_id}/video`; `GET /api/v1/clips` lists this browser's clips
+with `detected_at_seconds`, `clip_start_seconds`, `duration_seconds`,
+`created_at_utc`, `expires_at_utc` and the storage cap. Incidents carry a `clip_id`.
+Uploaded-video timestamps are video time; live timestamps are camera-session time.
+
+- **Storage:** clips have their own cap, default **1 GB** (`ICARE_MAX_CLIP_STORAGE_MB`).
+  When a new clip would exceed it, the oldest clips are deleted first, so the newest
+  falls are kept. Clips are downscaled to at most 960 px wide.
+- **Expiry:** deleted 24 hours after creation (`ICARE_CLIP_RETENTION_HOURS`), swept
+  every minute and at startup. Deleting a job deletes its clips; a clip can also be
+  deleted on its own.
+- **Privacy:** clips are private to the browser session that made them. A live camera
+  is still never recorded continuously: about four seconds of frames stay in memory and
+  a clip is written only when a fall is detected. A live clip is `pending` until the
+  second after the fall has been captured.
+- **Format:** H.264 MP4, or VP8 WebM if this OpenCV build cannot encode H.264. If neither
+  is available the clip is reported as not saved rather than served in a format
+  browsers cannot play. A live clip's frame rate is the rate frames were actually analyzed.
 
 ## Run locally
 

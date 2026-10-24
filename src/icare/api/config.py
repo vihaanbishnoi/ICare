@@ -32,13 +32,22 @@ class Settings:
     result_reserve_bytes: int = 16 * 1024 * 1024
     # Consecutive P(Fall) >= 0.50 predictions per person before an incident (1 = baseline).
     fall_confirmations: int = 1
+    # Short clip around each detected fall: its own storage cap (oldest clips are
+    # evicted first) and expiry, independent of upload storage.
+    max_clip_storage_bytes: int = 1024 * 1024 * 1024
+    clip_retention_seconds: float = 24 * 3600.0
+    clip_pre_seconds: float = 3.0   # before the detection timestamp
+    clip_post_seconds: float = 1.0  # after it; pre + post is the ~4 s clip
+    max_clips_per_job: int = 10
 
     def __post_init__(self) -> None:
         for name in ('max_upload_bytes', 'max_upload_seconds', 'max_queued_jobs',
                      'job_timeout_seconds', 'retention_seconds', 'cleanup_interval_seconds',
                      'max_active_jobs_per_visitor', 'max_jobs_per_visitor_window',
                      'max_jobs_per_ip_window', 'admission_window_seconds', 'max_storage_bytes',
-                     'result_reserve_bytes', 'fall_confirmations'):
+                     'result_reserve_bytes', 'fall_confirmations', 'max_clip_storage_bytes',
+                     'clip_retention_seconds', 'clip_pre_seconds', 'clip_post_seconds',
+                     'max_clips_per_job'):
             value = getattr(self, name)
             if not math.isfinite(value) or value <= 0:
                 raise ValueError(f'{name} must be positive and finite')
@@ -67,4 +76,9 @@ class Settings:
             max_storage_bytes=int(float(env.get('ICARE_MAX_STORAGE_MB', 1024)) * 1024 * 1024),
             fall_confirmations=int(env.get('ICARE_FALL_CONFIRMATIONS', 1)),
             result_reserve_bytes=int(float(env.get('ICARE_RESULT_BUDGET_MB', 16)) * 1024 * 1024),
+            max_clip_storage_bytes=int(float(env.get('ICARE_MAX_CLIP_STORAGE_MB', 1024)) * 1024 * 1024),
+            clip_retention_seconds=float(env.get('ICARE_CLIP_RETENTION_HOURS', 24)) * 3600,
+            clip_pre_seconds=float(env.get('ICARE_CLIP_PRE_SECONDS', 3)),
+            clip_post_seconds=float(env.get('ICARE_CLIP_POST_SECONDS', 1)),
+            max_clips_per_job=int(env.get('ICARE_MAX_CLIPS_PER_JOB', 10)),
         )

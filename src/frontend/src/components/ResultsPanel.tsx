@@ -1,6 +1,8 @@
 /** Result details from real API data; nothing here is computed beyond simple summaries. */
+import { Fragment, useState } from 'react';
 import type { Result, TrackId } from '../types';
 import { byPerson, personColor, personName } from '../lib/people';
+import { ClipView } from './ClipView';
 
 const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
 
@@ -13,19 +15,27 @@ export function Readout({ label, value, note }: { label: string; value: number |
   </section>;
 }
 
-interface IncidentRow { id: string; person: TrackId; when?: string; at: number; confidence: number }
+interface IncidentRow { id: string; person: TrackId; when?: string; at: number; confidence: number; clipId?: string | null }
 
 export function IncidentTable({ rows }: { rows: IncidentRow[] }) {
+  const [openClip, setOpenClip] = useState<string | null>(null);
   const clock = rows.some(row => row.when);
   const people = rows.some(row => row.person);
+  const clips = rows.some(row => row.clipId);
+  const columns = 2 + (people ? 1 : 0) + (clock ? 1 : 0) + (clips ? 1 : 0);
   return <table className="incidents">
-    <thead><tr>{people && <th scope="col">Person</th>}{clock && <th scope="col">Time</th>}<th scope="col">At</th><th scope="col">P(Fall)</th></tr></thead>
-    <tbody>{rows.map(row => <tr key={row.id}>
-      {people && <td><span className="person-dot" style={{ background: personColor(row.person) }} aria-hidden="true" />{personName(row.person)}</td>}
-      {clock && <td>{row.when}</td>}
-      <td className="num">{row.at.toFixed(2)} s</td>
-      <td className="num">{pct(row.confidence)}</td>
-    </tr>)}</tbody>
+    <thead><tr>{people && <th scope="col">Person</th>}{clock && <th scope="col">Time</th>}<th scope="col">At</th><th scope="col">P(Fall)</th>{clips && <th scope="col">Clip</th>}</tr></thead>
+    <tbody>{rows.map(row => <Fragment key={row.id}>
+      <tr>
+        {people && <td><span className="person-dot" style={{ background: personColor(row.person) }} aria-hidden="true" />{personName(row.person)}</td>}
+        {clock && <td>{row.when}</td>}
+        <td className="num">{row.at.toFixed(2)} s</td>
+        <td className="num incidents__pct">{pct(row.confidence)}</td>
+        {clips && <td>{row.clipId && <button type="button" className="button button--small" aria-expanded={openClip === row.clipId}
+          onClick={() => setOpenClip(openClip === row.clipId ? null : row.clipId!)}>{openClip === row.clipId ? 'Hide' : 'Clip'}</button>}</td>}
+      </tr>
+      {row.clipId && openClip === row.clipId && <tr className="incidents__clip"><td colSpan={columns}><ClipView clipId={row.clipId} /></td></tr>}
+    </Fragment>)}</tbody>
   </table>;
 }
 
@@ -45,7 +55,7 @@ export function ResultsSide({ result }: { result: Result }) {
       {result.incidents.length === 0
         ? <p className="hint">No prediction reached the 0.50 threshold.</p>
         : <IncidentTable rows={result.incidents.map(item => ({ id: item.incident_id, person: item.track_id,
-            at: item.detected_at_seconds, confidence: item.confidence }))} />}
+            at: item.detected_at_seconds, confidence: item.confidence, clipId: item.clip_id }))} />}
     </section>
     {people.size > 1 && <section className="side-block">
       <h2>People</h2>

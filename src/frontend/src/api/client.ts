@@ -2,7 +2,7 @@
  * API client — all calls use relative /api/v1 URLs (same-origin requirement).
  * Never construct absolute URLs here; the cookie is SameSite=strict.
  */
-import type { Job, Result, LiveSession, LiveFrame, LiveHistory } from '../types';
+import type { Clip, ClipList, Job, Result, LiveSession, LiveFrame, LiveHistory } from '../types';
 
 const BASE = '/api/v1';
 
@@ -63,4 +63,18 @@ export function stopLiveSession(sessionId: string): Promise<{ state: string }> {
 export async function fetchLiveHistory(): Promise<LiveHistory[]> {
   const result = await apiFetch<{ sessions: LiveHistory[] }>('/live/history');
   return result.sessions;
+}
+
+/** GET /api/v1/clips: this browser's fall clips, newest first, with the storage cap in force. */
+export function fetchClips(signal?: AbortSignal): Promise<ClipList> {
+  return apiFetch<ClipList>('/clips', { signal });
+}
+
+/** GET /api/v1/clips/{clip_id}: 404 once the clip expired or was deleted. */
+export function fetchClip(clipId: string, signal?: AbortSignal): Promise<Clip> {
+  return apiFetch<Clip>(`/clips/${encodeURIComponent(clipId)}`, { signal });
+}
+
+export async function deleteClip(clipId: string): Promise<void> {
+  await apiFetch<void>(`/clips/${encodeURIComponent(clipId)}`, { method: 'DELETE' });
 }

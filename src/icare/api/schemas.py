@@ -57,6 +57,7 @@ class Incident(BaseModel):
     incident_id: str
     job_id: str
     track_id: TrackId = Field(default=None, ge=1)
+    clip_id: str | None = None  # GET /clips/{clip_id}; None when no clip was kept
     detected_at_seconds: float
     confidence: float = Field(ge=0, le=1)
     status: Literal["detected", "acknowledged"]
@@ -88,6 +89,7 @@ class LiveIncident(BaseModel):
     incident_id: str
     session_id: str
     track_id: TrackId = Field(default=None, ge=1)
+    clip_id: str | None = None  # pending until the second after the fall has been captured
     detected_at_seconds: FiniteFloat = Field(ge=0)
     confidence: FiniteFloat = Field(ge=0, le=1)
     created_at_utc: str
@@ -130,3 +132,34 @@ class LiveHistory(LiveSession):
 
 class LiveHistoryResponse(BaseModel):
     sessions: list[LiveHistory]
+
+
+class Clip(BaseModel):
+    """A short video around one detected fall.
+
+    ``detected_at_seconds`` is on the source clock (video time for uploads,
+    camera-session time for live). The clip covers
+    [clip_start_seconds, clip_start_seconds + duration_seconds] on that same clock.
+    """
+    clip_id: str
+    source_kind: Literal['upload', 'live']
+    source_id: str
+    track_id: TrackId = Field(default=None, ge=1)
+    status: Literal['pending', 'ready', 'failed']
+    detected_at_seconds: FiniteFloat = Field(ge=0)
+    confidence: FiniteFloat = Field(ge=0, le=1)
+    clip_start_seconds: FiniteFloat | None = None
+    duration_seconds: FiniteFloat | None = None
+    created_at_utc: str
+    expires_at_utc: str
+    size_bytes: int | None = None
+    media_type: str | None = None
+    video_url: str | None = None
+    error_message: str | None = None
+
+
+class ClipList(BaseModel):
+    clips: list[Clip]
+    storage_used_bytes: int = Field(ge=0)
+    storage_cap_bytes: int = Field(gt=0)
+    retention_seconds: FiniteFloat = Field(gt=0)

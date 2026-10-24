@@ -36,9 +36,10 @@ class InvalidEngineOutput(Exception):
 class JobRunner:
     def __init__(
         self, store: Store, engine: Engine | None, jobs_dir: Path, timeout_seconds: float,
-        max_result_bytes: int = 16 * 1024 * 1024, fall_confirmations: int = 1,
+        max_result_bytes: int = 16 * 1024 * 1024, fall_confirmations: int = 1, clips=None,
     ) -> None:
         self.store = store
+        self.clips = clips  # icare.api.clips.ClipManager, or None to keep no fall clips
         self.engine = engine
         self.jobs_dir = jobs_dir
         self.timeout_seconds = timeout_seconds
@@ -193,17 +194,30 @@ class JobRunner:
             self.store.transition(job_id, ("running",), state="cancelled", progress=None)
             return
 
+        if self.clips is not None and incidents:
+            # Cut before the result is written so each incident carries its clip_id.
+            self.clips.cut_from_video(
+                job["owner"], job_id, Path(job["media_path"]), incidents,
+                _number(summary.get("duration_seconds")), cancel_event,
+            )
+            if cancel_event.is_set():
+                self._drop_clips(job_id)
+                self.store.transition(job_id, ("running",), state="cancelled", progress=None)
+                return
+
         try:
             result = build_result(
                 job_id, summary, self.engine.model_version,
                 predictions, poses, incidents, monotonic() - started,
             )
         except (KeyError, TypeError, ValueError):
+            self._drop_clips(job_id)
             self._fail(job_id, "invalid_engine_output", "The engine summary was incomplete.")
             return
         try:
             write_outputs(job_dir, result, self.max_result_bytes)
         except ResultTooLarge:
+            self._drop_clips(job_id)
             self._fail(job_id, 'result_too_large', 'The analysis exceeded its result storage budget.')
             return
         for incident in incidents:
@@ -213,12 +227,21 @@ class JobRunner:
             model_version=self.engine.model_version,
         ):
             self.store.clear_incidents(job_id)  # cancelled during the final write
+            self._drop_clips(job_id)
+
+    def _drop_clips(self, job_id: str) -> None:
+        if self.clips is not None:
+            self.clips.delete_for_source(job_id)
 
     def _fail(self, job_id: str, code: str, message: str) -> None:
         self.store.transition(
             job_id, ("running",), state="failed", progress=None,
             error_code=code, error_message=message,
         )
+
+
+def _number(value: Any) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
 def _validated(model, record: Mapping[str, Any]) -> dict[str, Any]:

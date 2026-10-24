@@ -150,6 +150,6 @@ export function ClipPlayer({ seed, room, at, label }: { seed: number; room: stri
         onChange={e => { setPlaying(false); setT(Number(e.target.value)); }} />
       <span className="num">{t.toFixed(1)} / {LEN.toFixed(1)} s</span>
     </div>
-    <p className="p-clip__note">Demo clip: simulated pose replay of the 5 s around detection. Connect the camera recorder to show stored footage here.</p>
+    <p className="p-clip__note">Demo clip: simulated pose replay, not footage. Real clips recorded by the detector are listed under Fall incidents, Camera detections.</p>
   </div>;
 }

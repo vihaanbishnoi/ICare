@@ -167,6 +167,7 @@
 .p-span-3 { grid-column: 1 / -1; }
 .p-card { background: var(--p-card); border: 1px solid var(--p-line); border-radius: var(--p-r); padding: 18px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .p-card--flush { padding: 0; gap: 0; overflow: hidden; }
+.p-card--flush > .p-card__head { padding: 16px 16px 12px; gap: 12px; flex-wrap: wrap; }
 .p-pad { padding: 16px 18px; border-bottom: 1px solid var(--p-line); }
 .p-card__head { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--p-ink2); font-weight: 500; }
 .p-card__head > span:first-child { display: inline-flex; gap: 8px; align-items: center; }

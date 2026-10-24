@@ -48,6 +48,8 @@ export interface Incident {
   incident_id: string;
   job_id: string;
   track_id?: TrackId;
+  /** Fall clip for GET /clips/{clip_id}; absent when none was kept. */
+  clip_id?: string | null;
   detected_at_seconds: number;
   confidence: number;
   status: 'detected' | 'acknowledged';
@@ -70,7 +72,7 @@ export interface Result {
 }
 
 export interface LiveIncident {
-  incident_id: string; session_id: string; track_id?: TrackId; detected_at_seconds: number;
+  incident_id: string; session_id: string; track_id?: TrackId; clip_id?: string | null; detected_at_seconds: number;
   confidence: number; created_at_utc: string;
 }
 
@@ -96,4 +98,34 @@ export interface LiveFrame {
   status: 'no_person' | 'warming_up' | 'monitoring';
   track_resets: number; frames_processed: number; processed_fps: number; processing_ms: number;
   incidents: LiveIncident[]; incident_latched: boolean;
+}
+
+/**
+ * A ~4 s video of one detected fall. Times are on the source clock: video time for
+ * uploads, camera-session time for live. The clip covers
+ * [clip_start_seconds, clip_start_seconds + duration_seconds].
+ */
+export interface Clip {
+  clip_id: string;
+  source_kind: 'upload' | 'live';
+  source_id: string;
+  track_id?: TrackId;
+  status: 'pending' | 'ready' | 'failed';
+  detected_at_seconds: number;
+  confidence: number;
+  clip_start_seconds: number | null;
+  duration_seconds: number | null;
+  created_at_utc: string;
+  expires_at_utc: string;
+  size_bytes: number | null;
+  media_type: string | null;
+  video_url: string | null;
+  error_message: string | null;
+}
+
+export interface ClipList {
+  clips: Clip[];
+  storage_used_bytes: number;
+  storage_cap_bytes: number;
+  retention_seconds: number;
 }

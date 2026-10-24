@@ -7,6 +7,7 @@ import {
   acknowledgeFall, ago, clock, dayStats, duration, responseSeconds, ROOMS, sendMessage, simulateFall,
   useNow, useSimulation, useStore, type FallEvent, type Resident, type Session,
 } from './data';
+import { CameraClips } from './CameraClips';
 import { downloadCsv, printReport } from './report';
 import { ClipPlayer, Icon, Initials, Logo, Modal, StatusPill } from './ui';
 import { BigAlert, DayStrip, ModelCard, Trend } from './extras';
@@ -340,6 +341,7 @@ function Incidents({ falls, residents, now, onClip, onAttend }: {
         <button type="button" className="p-btn" onClick={() => downloadCsv(list, residents, 'incidents')}><Icon name="download" size={16} />Export</button>
       </div>
     </div>
+    <CameraClips />
     <section className="p-card p-card--flush">
       <table className="p-table">
         <thead><tr><th>Resident</th><th>Room</th><th>Time</th><th>Confidence</th><th>Status</th><th>Response</th><th><span className="sr-only">Actions</span></th></tr></thead>
