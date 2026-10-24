@@ -201,8 +201,8 @@ export function useSimulation(enabled: boolean) {
       const status = options[Math.floor(Math.random() * options.length)];
       commit({ ...state, residents: state.residents.map(r => r.id === pick.id ? { ...r, status, since: now() } : r) });
     }, 9000);
-    const falls = window.setInterval(() => { if (Math.random() < 0.35) simulateFall(); }, 45_000);
-    return () => { window.clearInterval(drift); window.clearInterval(falls); };
+    // No random falls: fall alerts now come only from the real detector (live camera or uploaded video).
+    return () => { window.clearInterval(drift); };
   }, [enabled]);
 }
 
