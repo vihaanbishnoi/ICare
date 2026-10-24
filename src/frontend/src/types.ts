@@ -150,13 +150,40 @@ export interface DailyLogsResponse {
   logs: DailyLogEntry[];
 }
 
+export interface IncidentStats {
+  total_events: number;
+  confirmed_falls: number;
+  near_falls: number;
+  avg_response_time_seconds: number;
+}
+
+export interface HighRiskResident {
+  resident_name: string;
+  room: string;
+  wing: string;
+  risk_level: string;
+  incident_summary: string;
+  action_plan: string;
+}
+
+export interface DailySummaryStructured {
+  executive_summary: string;
+  incident_stats: IncidentStats;
+  high_risk_residents: HighRiskResident[];
+  key_observations: string[];
+  shift_handoff_recommendations: string[];
+  shift_handoff_notes: string;
+}
+
 export interface DailySummaryResponse {
   status: 'success' | 'fallback' | 'empty';
   model: string;
   summary: string;
+  structured_summary?: DailySummaryStructured | null;
   log_count: number;
   generated_at_utc: string;
   ollama_connected: boolean;
   notice?: string | null;
 }
+
 

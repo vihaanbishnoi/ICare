@@ -50,9 +50,9 @@ class DailySummaryUnitTests(unittest.TestCase):
     def test_build_summary_prompt_contains_sections(self) -> None:
         logs = load_daily_logs(self.csv_file)
         prompt = build_summary_prompt(logs)
-        self.assertIn("Executive Summary", prompt)
-        self.assertIn("Clinical & Incident Analysis", prompt)
-        self.assertIn("Shift Handoff Recommendations", prompt)
+        self.assertIn("executive_summary", prompt)
+        self.assertIn("incident_stats", prompt)
+        self.assertIn("high_risk_residents", prompt)
 
     def test_rule_based_fallback_summary(self) -> None:
         logs = load_daily_logs(self.csv_file)
@@ -65,7 +65,19 @@ class DailySummaryUnitTests(unittest.TestCase):
     def test_summarize_daily_logs_success_with_mock_ollama(self, mock_urlopen) -> None:
         mock_response = MagicMock()
         mock_response.read.return_value = json.dumps({
-            "response": "### Daily Fall Monitoring Summary Report\nAll clear."
+            "response": json.dumps({
+                "executive_summary": "All clear today across the facility.",
+                "incident_stats": {
+                    "total_events": 2,
+                    "confirmed_falls": 1,
+                    "near_falls": 0,
+                    "avg_response_time_seconds": 30.0
+                },
+                "high_risk_residents": [],
+                "key_observations": ["Observation 1"],
+                "shift_handoff_recommendations": ["Recommendation 1"],
+                "shift_handoff_notes": "Notes for incoming shift."
+            })
         }).encode("utf-8")
         mock_urlopen.return_value.__enter__.return_value = mock_response
 
@@ -75,6 +87,8 @@ class DailySummaryUnitTests(unittest.TestCase):
         self.assertTrue(res["ollama_connected"])
         self.assertIn("All clear", res["summary"])
         self.assertEqual(res["model"], "llama3.2:1b")
+        self.assertIn("structured_summary", res)
+        self.assertEqual(res["structured_summary"]["incident_stats"]["confirmed_falls"], 1)
 
     def test_summarize_daily_logs_fallback_when_ollama_unreachable(self) -> None:
         logs = load_daily_logs(self.csv_file)
@@ -83,6 +97,8 @@ class DailySummaryUnitTests(unittest.TestCase):
         self.assertEqual(res["status"], "fallback")
         self.assertFalse(res["ollama_connected"])
         self.assertIn("Executive Summary", res["summary"])
+        self.assertIn("structured_summary", res)
+        self.assertEqual(res["structured_summary"]["incident_stats"]["total_events"], 2)
 
 
 class DailySummaryApiTests(unittest.TestCase):
@@ -104,7 +120,19 @@ class DailySummaryApiTests(unittest.TestCase):
     def test_api_get_daily_summary(self, mock_urlopen) -> None:
         mock_response = MagicMock()
         mock_response.read.return_value = json.dumps({
-            "response": "Executive Summary: 4 falls recorded today."
+            "response": json.dumps({
+                "executive_summary": "4 falls recorded today.",
+                "incident_stats": {
+                    "total_events": 4,
+                    "confirmed_falls": 4,
+                    "near_falls": 0,
+                    "avg_response_time_seconds": 42.0
+                },
+                "high_risk_residents": [],
+                "key_observations": [],
+                "shift_handoff_recommendations": [],
+                "shift_handoff_notes": "Handoff notes"
+            })
         }).encode("utf-8")
         mock_urlopen.return_value.__enter__.return_value = mock_response
 
@@ -113,8 +141,11 @@ class DailySummaryApiTests(unittest.TestCase):
         data = resp.json()
         self.assertEqual(data["status"], "success")
         self.assertEqual(data["model"], "llama3.2:1b")
-        self.assertIn("Executive Summary", data["summary"])
+        self.assertIn("4 falls", data["summary"])
+        self.assertIn("structured_summary", data)
+        self.assertEqual(data["structured_summary"]["incident_stats"]["confirmed_falls"], 4)
 
 
 if __name__ == "__main__":
     unittest.main()
+

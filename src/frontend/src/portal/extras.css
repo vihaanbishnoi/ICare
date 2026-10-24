@@ -175,3 +175,153 @@
   color: var(--p-ink2);
 }
 
+/* Field-wise structured AI summary */
+.p-summary-structured {
+  display: grid;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.p-exec-summary-box {
+  background: color-mix(in srgb, var(--p-card) 90%, #6366f1 10%);
+  border-left: 4px solid #6366f1;
+  padding: 14px 18px;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.p-exec-summary-box strong {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6366f1;
+  margin-bottom: 4px;
+}
+.portal[data-theme='dark'] .p-exec-summary-box strong {
+  color: #a5b4fc;
+}
+
+.p-summary-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+.p-summary-kpi {
+  background: var(--p-card);
+  border: 1px solid var(--p-line);
+  padding: 10px 14px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.p-summary-kpi span {
+  font-size: 11px;
+  color: var(--p-ink2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.p-summary-kpi strong {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+}
+.p-summary-kpi[data-tone='bad'] strong {
+  color: #dc2626;
+}
+.p-summary-kpi[data-tone='warn'] strong {
+  color: #d97706;
+}
+.p-summary-kpi[data-tone='info'] strong {
+  color: #4f46e5;
+}
+
+.p-summary-block {
+  background: var(--p-card);
+  border: 1px solid var(--p-line);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+.p-summary-block__title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--p-ink);
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.p-risk-grid {
+  display: grid;
+  gap: 10px;
+}
+.p-risk-card {
+  border: 1px solid var(--p-line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--p-card) 95%, #000 5%);
+  display: grid;
+  gap: 6px;
+}
+.portal[data-theme='dark'] .p-risk-card {
+  background: color-mix(in srgb, var(--p-card) 92%, #fff 8%);
+}
+.p-risk-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.p-risk-card__desc {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--p-ink);
+}
+.p-risk-card__action {
+  font-size: 12px;
+  color: #4338ca;
+  background: rgba(99, 102, 241, 0.08);
+  padding: 6px 10px;
+  border-radius: 6px;
+  line-height: 1.4;
+}
+.portal[data-theme='dark'] .p-risk-card__action {
+  color: #c7d2fe;
+}
+
+.p-summary-bullets {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--p-ink);
+}
+
+.p-handoff-callout {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #065f46;
+}
+.portal[data-theme='dark'] .p-handoff-callout {
+  background: rgba(16, 185, 129, 0.12);
+  color: #a7f3d0;
+  border-color: rgba(16, 185, 129, 0.35);
+}
+.p-handoff-callout strong {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+
