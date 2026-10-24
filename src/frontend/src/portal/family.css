@@ -1,0 +1,61 @@
+/* Family portal: one status card, activity with day picker, messages beside it. */
+.p-fam-main { gap: 20px; }
+.p-fhero { display: grid; gap: 20px; padding: 28px; border-radius: 24px; background: var(--p-card); border: 1px solid var(--p-line); }
+.p-fhero[data-status='fall'] { border-color: color-mix(in srgb, var(--p-bad) 35%, var(--p-line)); background: linear-gradient(180deg, color-mix(in srgb, var(--p-bad-soft) 70%, var(--p-card)) 0%, var(--p-card) 70%); }
+.p-fhero__top { display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; }
+.p-fhero__who { display: flex; gap: 20px; align-items: center; }
+.p-fhero__eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--p-ink3); }
+.p-fhero__who h1 { font-size: 32px; letter-spacing: -0.02em; margin: 2px 0 8px; }
+.p-fhero__tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.p-fhero__tags span { height: 26px; padding: 0 10px; display: inline-flex; align-items: center; border-radius: 999px; background: var(--p-soft); color: var(--p-ink2); font-size: 13px; }
+.p-fhero__status { display: grid; gap: 6px; justify-items: end; text-align: right; max-width: 420px; }
+.p-fhero__status strong { font-size: 18px; letter-spacing: -0.01em; }
+.p-fhero__status small { color: var(--p-ink3); }
+.p-fhero__alert { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 16px; background: var(--p-card); border: 1px solid color-mix(in srgb, var(--p-bad) 30%, var(--p-line)); }
+.p-fhero__alert > div { flex: 1; }
+.p-fhero__alert p { color: var(--p-ink2); font-size: 14px; }
+.p-fhero__alerticon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--p-bad); color: #fff; flex: none; animation: p-pulse 1.4s infinite; }
+.p-fhero__stats { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0; border-top: 1px solid var(--p-line); padding-top: 18px; }
+.p-fhero__stats div { display: grid; gap: 4px; padding: 0 18px; border-left: 1px solid var(--p-line); }
+.p-fhero__stats div:first-child { padding-left: 0; border-left: 0; }
+.p-fhero__stats dt { font-size: 13px; color: var(--p-ink3); }
+.p-fhero__stats dd { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; display: flex; align-items: center; white-space: nowrap; }
+
+.p-fgrid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.p-factivity__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.p-factivity__head h2 { font-size: 18px; display: flex; gap: 8px; align-items: center; }
+.p-factivity__dl { display: flex; gap: 6px; }
+.p-fdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; padding: 4px; border-radius: 14px; background: var(--p-soft); }
+.p-fdays button { display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border: 0; border-radius: 10px; background: transparent; color: var(--p-ink2); font: inherit; cursor: pointer; }
+.p-fdays button span { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.p-fdays button b { font-size: 15px; color: var(--p-bad); }
+.p-fdays button b[data-zero] { color: var(--p-good); }
+.p-fdays button:hover { background: var(--p-card); }
+.p-fdays button[data-on] { background: var(--p-dark); color: #fff; }
+.p-fdays button[data-on] b { color: var(--p-lime); }
+.p-factivity .p-timeline { margin-top: 4px; }
+.p-fempty { display: flex; gap: 8px; align-items: center; justify-content: center; color: var(--p-good); }
+.p-fempty::before { display: none; }
+
+.p-fmsgs__list { list-style: none; padding: 0; display: grid; gap: 8px; max-height: 520px; overflow-y: auto; }
+.p-fmsgs__list li { display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding: 12px; border-radius: 14px; background: var(--p-soft); }
+.p-fmsgs__list li[data-unread] { background: color-mix(in srgb, var(--p-accent-soft) 60%, var(--p-card)); box-shadow: inset 3px 0 0 var(--p-accent); }
+.p-fmsgs__list p { color: var(--p-ink2); font-size: 14px; margin: 2px 0 4px; }
+.p-fmsgs__list small { color: var(--p-ink3); font-size: 12px; }
+.p-fmsgs__icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--p-good-soft); color: var(--p-good); }
+.p-fmsgs__list li[data-kind='alert'] .p-fmsgs__icon { background: var(--p-bad-soft); color: var(--p-bad); }
+.p-fmsgs__list li[data-kind='visit'] .p-fmsgs__icon { background: var(--p-info-soft); color: var(--p-info); }
+
+@media (max-width: 900px) {
+  .p-fhero { padding: 20px; }
+  .p-fhero__status { justify-items: start; text-align: left; }
+  .p-fhero__stats { grid-template-columns: 1fr 1fr; row-gap: 14px; }
+  .p-fhero__stats div:nth-child(3) { padding-left: 0; border-left: 0; }
+  .p-fgrid { grid-template-columns: 1fr; }
+  .p-fdays { grid-template-columns: repeat(7, 64px); overflow-x: auto; }
+}
+.p-fhero[data-status='fall'] .p-hero__ring { border-color: var(--p-bad); }
+.p-fhero[data-status='resting'] .p-hero__ring { border-color: var(--p-rest); }
+.p-fhero[data-status='away'] .p-hero__ring { border-color: var(--p-away); }
+.p-fhero__stats dd, .p-fhero__stats dd.num { font-family: inherit; font-variant-numeric: tabular-nums; }
+.p-family .p-timeline small.num { font-family: inherit; }
