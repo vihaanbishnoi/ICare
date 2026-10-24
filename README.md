@@ -84,6 +84,13 @@ with `detected_at_seconds`, `clip_start_seconds`, `duration_seconds`,
 `created_at_utc`, `expires_at_utc` and the storage cap. Incidents carry a `clip_id`.
 Uploaded-video timestamps are video time; live timestamps are camera-session time.
 
+In the care portal, falls found by the detector join the manager's feed as a
+"Fall detector" room (Room DET, not a resident), so they appear in Overview alerts, Live
+monitor, Fall incidents, the alert bell, the centred alert and reports, and every Clip
+button plays the recorded video. The portal's other residents, falls and the "Simulate
+fall" button are still simulated demo data; their clip dialog is labelled as a drawn
+replay because no footage exists for them.
+
 - **Storage:** clips have their own cap, default **1 GB** (`ICARE_MAX_CLIP_STORAGE_MB`).
   When a new clip would exceed it, the oldest clips are deleted first, so the newest
   falls are kept. Clips are downscaled to at most 960 px wide.
