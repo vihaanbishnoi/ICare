@@ -1,0 +1,66 @@
+/* Sign-in page: photo panel on the left, form on the right. */
+.p-login--v2 { grid-template-columns: minmax(0, 1.15fr) minmax(420px, 1fr); background: var(--p-card); }
+
+.p-login--v2 .p-login__art { position: relative; overflow: hidden; isolation: isolate; background: #17181c; padding: 40px 56px 48px; gap: 40px; }
+.p-login__photo { position: absolute; inset: 0; z-index: -2; background-size: cover; background-position: 35% center; opacity: .28; filter: grayscale(.25) contrast(1.05); transform: scale(1.04); }
+.p-login__shade { position: absolute; inset: 0; z-index: -1;
+  background: radial-gradient(90% 70% at 0% 0%, rgba(242,107,29,.28), transparent 60%),
+              linear-gradient(180deg, rgba(23,24,28,.35) 0%, rgba(23,24,28,.55) 45%, rgba(23,24,28,.92) 100%); }
+.p-login__top { display: flex; justify-content: space-between; align-items: center; }
+.p-login--v2 .p-login__art .p-logo strong { color: #fff; }
+
+.p-login__eyebrow { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; margin-bottom: 20px; border-radius: 999px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.14); color: #e7e9ec; font-size: 13px; font-weight: 500; backdrop-filter: blur(8px); }
+.p-login--v2 .p-login__pitch h1 { font-size: clamp(36px, 4.4vw, 58px); line-height: 1.04; letter-spacing: -0.03em; margin-bottom: 18px; }
+.p-login--v2 .p-login__pitch h1 em { font-style: normal; color: #ffb27f; }
+.p-login--v2 .p-login__pitch p { color: #c9ccd2; font-size: 17px; line-height: 1.55; max-width: 480px; }
+.p-login__points { list-style: none; padding: 0; margin-top: 24px; display: flex; flex-wrap: wrap; gap: 8px; }
+.p-login__points li { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); color: #f1f2f4; font-size: 13px; font-weight: 500; }
+.p-login__points .p-icon { color: #ffb27f; }
+
+.p-login__stack { display: grid; gap: 10px; max-width: 420px; }
+.p-login--v2 .p-login__card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px;
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); backdrop-filter: blur(14px); color: #fff; box-shadow: 0 20px 40px -24px rgba(0,0,0,.6); }
+.p-login--v2 .p-login__card strong { display: block; font-size: 14px; }
+.p-login--v2 .p-login__card small { color: #b8bcc4; font-size: 12px; }
+.p-login--v2 .p-login__card--alert { margin-left: 36px; border-color: rgba(242,107,29,.55); background: rgba(242,107,29,.14); }
+.p-login__alerticon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 12px; background: var(--p-accent); color: #fff; animation: p-pulse 1.4s infinite; }
+.p-login__respond { height: 28px; padding: 0 12px; display: inline-grid; place-items: center; border-radius: 8px; background: var(--p-lime); color: #1a1c10; font-size: 12px; font-weight: 600; }
+
+/* form */
+.p-login--v2 .p-login__form { background: var(--p-card); }
+.p-login--v2 .p-login__form form { max-width: 420px; gap: 18px; }
+.p-login--v2 .p-login__form h2 { font-size: 30px; letter-spacing: -0.02em; margin-bottom: 4px; }
+.p-login__mobilelogo { display: none; }
+.p-roles2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.p-role2 { position: relative; display: grid; gap: 2px; padding: 14px; border: 1.5px solid var(--p-line); border-radius: 16px; cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s; }
+.p-role2:hover { border-color: color-mix(in srgb, var(--p-accent) 40%, var(--p-line)); }
+.p-role2 input { position: absolute; opacity: 0; pointer-events: none; }
+.p-role2 strong { font-size: 14px; margin-top: 10px; }
+.p-role2 small { color: var(--p-ink3); font-size: 12px; }
+.p-role2__icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 12px; background: var(--p-soft); color: var(--p-ink2); }
+.p-role2__check { position: absolute; top: 12px; right: 12px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--p-line); color: transparent; }
+.p-role2[data-checked] { border-color: var(--p-accent); background: color-mix(in srgb, var(--p-accent-soft) 55%, var(--p-card)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--p-accent) 12%, transparent); }
+.p-role2[data-checked] .p-role2__icon { background: var(--p-accent); color: #fff; }
+.p-role2[data-checked] .p-role2__check { background: var(--p-accent); border-color: var(--p-accent); color: #fff; }
+.p-role2:has(input:focus-visible) { outline: 2px solid var(--p-accent); outline-offset: 2px; }
+
+.p-input { position: relative; display: flex; align-items: center; height: 48px; border: 1px solid var(--p-line); border-radius: 12px; background: var(--p-card); transition: border-color .15s, box-shadow .15s; }
+.p-input > .p-icon { position: absolute; left: 14px; color: var(--p-ink3); pointer-events: none; }
+.p-field .p-input input { flex: 1; height: 100%; border: 0; background: transparent; padding: 0 12px 0 42px; outline: none; border-radius: 12px; }
+.p-field .p-input input:focus { outline: none; }
+.p-input:focus-within { border-color: var(--p-accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--p-accent) 14%, transparent); }
+.p-input__toggle { height: 32px; margin-right: 8px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--p-soft); color: var(--p-ink2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.p-input__toggle:hover { color: var(--p-ink); }
+.p-login--v2 .p-btn--xl { gap: 10px; }
+
+.p-demo2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 14px; border-radius: 12px; background: var(--p-soft); color: var(--p-ink2); font-size: 13px; }
+.p-demo2__tag { height: 22px; padding: 0 8px; display: inline-grid; place-items: center; border-radius: 999px; background: var(--p-dark); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+.p-demo2 .p-link { margin-left: auto; font-size: 13px; }
+.p-login__help { text-align: center; color: var(--p-ink3); font-size: 13px; }
+
+@media (max-width: 900px) {
+  .p-login--v2 { grid-template-columns: 1fr; }
+  .p-login--v2 .p-login__art { display: none; }
+  .p-login__mobilelogo { display: block; margin-bottom: 8px; }
+  .p-roles2 { grid-template-columns: 1fr; }
+}
