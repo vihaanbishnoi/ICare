@@ -163,3 +163,34 @@ class ClipList(BaseModel):
     storage_used_bytes: int = Field(ge=0)
     storage_cap_bytes: int = Field(gt=0)
     retention_seconds: FiniteFloat = Field(gt=0)
+
+
+class DailyLogEntry(BaseModel):
+    log_id: str
+    timestamp: str
+    resident_id: str
+    resident_name: str
+    room: str
+    wing: str
+    event_type: str
+    confidence: FiniteFloat = Field(ge=0, le=1)
+    status: str
+    response_time_seconds: int | None = None
+    attended_by: str | None = None
+    staff_notes: str | None = None
+
+
+class DailyLogsResponse(BaseModel):
+    total_logs: int
+    logs: list[DailyLogEntry]
+
+
+class DailySummaryResponse(BaseModel):
+    status: Literal['success', 'fallback', 'empty']
+    model: str
+    summary: str
+    log_count: int
+    generated_at_utc: str
+    ollama_connected: bool
+    notice: str | None = None
+

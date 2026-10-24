@@ -28,8 +28,10 @@ from icare.api.config import Settings
 from icare.api.engine import Engine, load_real_engine
 from icare.api.results import job_url
 from icare.api.schemas import Clip, ClipList, Incident, Job
+from icare.api.schemas import DailyLogsResponse, DailySummaryResponse
 from icare.api.schemas import LiveFrame, LiveHistoryResponse, LiveSession
 from icare.api.store import ACTIVE_STATES, Store, utc_now
+from icare.api.summary import load_daily_logs, summarize_daily_logs
 from icare.api.video import InvalidVideo, mp4_duration_seconds
 from icare.api.worker import JobRunner
 from icare.api.live import LiveError, LiveManager, MAX_FRAME_BYTES
@@ -495,3 +497,20 @@ def get_clip_video(request: Request, clip: dict = Depends(owned_clip)) -> FileRe
 def delete_clip(request: Request, clip: dict = Depends(owned_clip)) -> Response:
     request.app.state.clips.delete(clip["clip_id"])
     return Response(status_code=204)
+
+
+# ---------- daily logs & summary ----------
+
+@router.get("/reports/daily-logs", response_model=DailyLogsResponse)
+def get_daily_logs() -> dict:
+    """Return local dummy daily monitoring logs for the facility."""
+    logs = load_daily_logs()
+    return {"total_logs": len(logs), "logs": logs}
+
+
+@router.post("/reports/summarize", response_model=DailySummaryResponse)
+@router.get("/reports/summarize", response_model=DailySummaryResponse)
+def get_daily_summary(model: str = "llama3.2:1b") -> dict:
+    """Generate an AI summary report from local dummy logs using Ollama llama3.2:1b."""
+    return summarize_daily_logs(model=model)
+

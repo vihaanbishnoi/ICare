@@ -13,6 +13,8 @@ import { ClipPlayer, Icon, Initials, Logo, Modal, StatusPill } from './ui';
 import { BigAlert, DayStrip, ModelCard, Trend } from './extras';
 import { dayLabel, fallsForDay, HISTORY_DAYS } from './data';
 import { useTheme } from '../lib/theme';
+import { fetchDailyLogs, fetchDailySummary } from '../api/client';
+import type { DailyLogEntry, DailySummaryResponse } from '../types';
 
 type View = 'overview' | 'live' | 'incidents' | 'reports' | 'families' | 'detection';
 const NAV: { id: View; label: string; icon: string }[] = [
@@ -381,14 +383,152 @@ function Reports({ falls: todayFalls, residents }: { falls: FallEvent[]; residen
   const date = new Date(Date.now() - day * 86_400_000);
   const title = `Daily fall report · ${date.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}`;
 
+  const [summarising, setSummarising] = useState(false);
+  const [summary, setSummary] = useState<DailySummaryResponse | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [showLogs, setShowLogs] = useState(false);
+  const [dummyLogs, setDummyLogs] = useState<DailyLogEntry[]>([]);
+  const [copied, setCopied] = useState(false);
+
+  async function handleSummarise() {
+    setSummarising(true);
+    setSummaryError(null);
+    try {
+      const data = await fetchDailySummary('llama3.2:1b');
+      setSummary(data);
+      try {
+        const logsRes = await fetchDailyLogs();
+        setDummyLogs(logsRes.logs);
+      } catch { /* preview is optional */ }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSummaryError(msg);
+    } finally {
+      setSummarising(false);
+    }
+  }
+
+  function copySummary() {
+    if (!summary?.summary) return;
+    navigator.clipboard.writeText(summary.summary);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   return <div className="p-stack">
     <div className="p-pagehead">
       <div><h2>Daily report · {dayLabel(day)}</h2><p className="p-muted">{date.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}{day === 0 ? ' · updates live until midnight' : ' · closed day'}</p></div>
       <div className="p-filters">
+        <button
+          type="button"
+          className="p-btn p-btn--ai"
+          onClick={handleSummarise}
+          disabled={summarising}
+          title="Summarise daily dummy monitoring logs with Ollama llama3.2:1b"
+        >
+          <Icon name="sparkle" size={16} />
+          {summarising ? 'Summarising...' : 'Summarise'}
+        </button>
         <button type="button" className="p-btn" onClick={() => downloadCsv(falls, residents)}><Icon name="download" size={16} />CSV</button>
         <button type="button" className="p-btn p-btn--primary" onClick={() => printReport(falls, residents, title)}><Icon name="report" size={16} />Download PDF</button>
       </div>
     </div>
+
+    {summarising && <section className="p-card p-card--ai-loading">
+      <div className="p-ai-loading">
+        <span className="p-ai-spinner" />
+        <div>
+          <strong>Summarising daily monitoring logs with Ollama (llama3.2:1b)...</strong>
+          <p className="p-muted p-small">Analyzing incident patterns, response latencies, and care recommendations.</p>
+        </div>
+      </div>
+    </section>}
+
+    {summaryError && <section className="p-card p-inline-alert" role="alert">
+      <Icon name="alert" size={18} />
+      <div style={{ flex: 1 }}>
+        <strong>Could not generate summary</strong>: {summaryError}
+      </div>
+      <button type="button" className="p-btn p-btn--sm" onClick={handleSummarise}>Retry</button>
+    </section>}
+
+    {summary && <section className="p-card p-card--ai-summary" aria-label="AI Daily Summary Report">
+      <header className="p-card__head">
+        <div className="p-ai-badge">
+          <Icon name="sparkle" size={16} />
+          <span><strong>AI Daily Summary</strong> · {summary.model} {summary.ollama_connected ? '· Ollama' : '· Analyzed'}</span>
+          <span className="p-muted p-small">({summary.log_count} log entries analyzed)</span>
+        </div>
+        <div className="p-ai-actions">
+          <button type="button" className="p-btn p-btn--sm" onClick={() => setShowLogs(!showLogs)}>
+            <Icon name="report" size={14} />{showLogs ? 'Hide dummy logs' : 'View source logs'}
+          </button>
+          <button type="button" className="p-btn p-btn--sm" onClick={copySummary}>
+            <Icon name={copied ? 'check' : 'download'} size={14} />{copied ? 'Copied' : 'Copy text'}
+          </button>
+          <button type="button" className="p-iconbtn" onClick={() => setSummary(null)} aria-label="Dismiss summary">
+            <Icon name="close" size={14} />
+          </button>
+        </div>
+      </header>
+
+      {summary.notice && <div className="p-ai-notice"><Icon name="alert" size={14} /><span>{summary.notice}</span></div>}
+
+      <div className="p-summary-body">
+        {summary.summary.split('\n\n').map((paragraph, idx) => {
+          const trimmed = paragraph.trim();
+          if (trimmed.startsWith('### ') || trimmed.startsWith('## ') || (trimmed.startsWith('**') && trimmed.endsWith('**') && !trimmed.includes('\n'))) {
+            return <h3 key={idx} className="p-summary-heading">{trimmed.replace(/^[#*]+\s*|\*\*$/g, '')}</h3>;
+          }
+          if (trimmed.includes('\n|') || trimmed.startsWith('|')) {
+            const lines = trimmed.split('\n').filter(l => l.trim().startsWith('|'));
+            const headerCols = lines[0]?.split('|').map(c => c.trim()).filter(Boolean) || [];
+            const dataRows = lines.slice(2).map(l => l.split('|').map(c => c.trim()).filter(Boolean));
+            return <div key={idx} className="p-table-wrap p-summary-table">
+              <table className="p-table p-table--compact">
+                <thead><tr>{headerCols.map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
+                <tbody>{dataRows.map((row, rIdx) => <tr key={rIdx}>{row.map((col, cIdx) => <td key={cIdx}>{col}</td>)}</tr>)}</tbody>
+              </table>
+            </div>;
+          }
+          if (trimmed.startsWith('* ') || trimmed.startsWith('- ') || /^\d+\.\s/.test(trimmed)) {
+            const items = trimmed.split('\n').filter(l => l.trim());
+            return <ul key={idx} className="p-summary-list">
+              {items.map((item, iIdx) => <li key={iIdx}>{item.replace(/^(\*|-|\d+\.)\s*/, '')}</li>)}
+            </ul>;
+          }
+          return <p key={idx} className="p-summary-para">{trimmed}</p>;
+        })}
+      </div>
+
+      {showLogs && <div className="p-logs-preview">
+        <div className="p-logs-header">
+          <h4>Dummy daily logs ({dummyLogs.length} events from daily_logs.csv)</h4>
+          <span className="p-muted p-small">Source dataset for Ollama llama3.2:1b</span>
+        </div>
+        <div className="p-table-wrap">
+          <table className="p-table p-table--compact">
+            <thead>
+              <tr><th>Time</th><th>Resident</th><th>Room</th><th>Wing</th><th>Event</th><th>Confidence</th><th>Response</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+              {dummyLogs.map(l => <tr key={l.log_id}>
+                <td className="num">{l.timestamp.split(' ')[1] || l.timestamp}</td>
+                <td><strong>{l.resident_name}</strong></td>
+                <td>{l.room}</td>
+                <td>{l.wing}</td>
+                <td><span className="p-badge" data-tone={l.event_type.includes('Fall') ? 'bad' : 'info'}>{l.event_type}</span></td>
+                <td className="num">{Math.round(l.confidence * 100)}%</td>
+                <td className="num">{l.response_time_seconds ? `${l.response_time_seconds}s` : '–'}</td>
+                <td className="p-cell-note">{l.staff_notes}</td>
+              </tr>)}
+              {!dummyLogs.length && <tr><td colSpan={8} className="p-muted">Loading logs...</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>}
+    </section>}
+
     <DayStrip value={day} onChange={setDay} counts={counts} />
     <section className="p-card">
       <header className="p-card__head"><span>Falls per day · last 7 days</span><span className="p-muted p-small">Click a bar to open that day</span></header>

@@ -129,3 +129,34 @@ export interface ClipList {
   storage_cap_bytes: number;
   retention_seconds: number;
 }
+
+export interface DailyLogEntry {
+  log_id: string;
+  timestamp: string;
+  resident_id: string;
+  resident_name: string;
+  room: string;
+  wing: string;
+  event_type: string;
+  confidence: number;
+  status: string;
+  response_time_seconds: number | null;
+  attended_by: string | null;
+  staff_notes: string | null;
+}
+
+export interface DailyLogsResponse {
+  total_logs: number;
+  logs: DailyLogEntry[];
+}
+
+export interface DailySummaryResponse {
+  status: 'success' | 'fallback' | 'empty';
+  model: string;
+  summary: string;
+  log_count: number;
+  generated_at_utc: string;
+  ollama_connected: boolean;
+  notice?: string | null;
+}
+

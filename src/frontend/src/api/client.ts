@@ -2,7 +2,7 @@
  * API client — all calls use relative /api/v1 URLs (same-origin requirement).
  * Never construct absolute URLs here; the cookie is SameSite=strict.
  */
-import type { Clip, ClipList, Job, Result, LiveSession, LiveFrame, LiveHistory } from '../types';
+import type { Clip, ClipList, Job, Result, LiveSession, LiveFrame, LiveHistory, DailyLogsResponse, DailySummaryResponse } from '../types';
 
 const BASE = '/api/v1';
 
@@ -78,3 +78,17 @@ export function fetchClip(clipId: string, signal?: AbortSignal): Promise<Clip> {
 export async function deleteClip(clipId: string): Promise<void> {
   await apiFetch<void>(`/clips/${encodeURIComponent(clipId)}`, { method: 'DELETE' });
 }
+
+/** GET /api/v1/reports/daily-logs */
+export function fetchDailyLogs(signal?: AbortSignal): Promise<DailyLogsResponse> {
+  return apiFetch<DailyLogsResponse>('/reports/daily-logs', { signal });
+}
+
+/** POST /api/v1/reports/summarize */
+export function fetchDailySummary(model = 'llama3.2:1b', signal?: AbortSignal): Promise<DailySummaryResponse> {
+  return apiFetch<DailySummaryResponse>(`/reports/summarize?model=${encodeURIComponent(model)}`, {
+    method: 'POST',
+    signal,
+  });
+}
+
