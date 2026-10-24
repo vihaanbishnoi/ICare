@@ -9,7 +9,12 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from icare.api.chatbot import ask_facility_chatbot, is_unrelated_query, SHORT_CIRCUIT_RESPONSE
+from icare.api.chatbot import (
+    SHORT_CIRCUIT_RESPONSE,
+    ask_facility_chatbot,
+    build_database_context,
+    is_unrelated_query,
+)
 from icare.api.config import Settings
 from icare.api.dispatch import (
     DEFAULT_CARETAKERS,
@@ -146,6 +151,85 @@ class ChatbotUnitTests(unittest.TestCase):
 
         res = ask_facility_chatbot(self.store, "What color was the resident's shoes?")
         self.assertEqual(res["reply"], SHORT_CIRCUIT_RESPONSE)
+
+    def test_database_context_includes_newly_added_data(self) -> None:
+        # 1. Initially empty
+        ctx_before = build_database_context(self.store)
+        self.assertNotIn("Room 909", ctx_before)
+
+        # 2. Add fall location to database
+        self.store.add_fall_location({
+            "fall_id": "fall_live_909",
+            "room": "909",
+            "source_kind": "live",
+            "source_id": "sess_1",
+            "track_id": 3,
+            "detected_at_seconds": 12.5,
+            "onset_seconds": 11.0,
+            "onset_x": 0.35, "onset_y": 0.45,
+            "landing_x": 0.38, "landing_y": 0.72,
+            "body_width": 0.15,
+            "onset_estimated": 0,
+            "frame_width": 1280, "frame_height": 720,
+            "confidence": 0.94,
+            "created_at_utc": "2026-10-24T16:00:00Z",
+        })
+
+        # 3. Add clip to database
+        self.store.add_clip({
+            "clip_id": "clip_live_909",
+            "owner": "test_owner",
+            "source_kind": "live",
+            "source_id": "sess_1",
+            "track_id": 3,
+            "status": "ready",
+            "detected_at_seconds": 12.5,
+            "confidence": 0.94,
+            "clip_start_seconds": 8.5,
+            "duration_seconds": 5.0,
+            "created_at_utc": "2026-10-24T16:00:00Z",
+            "file_name": "clip_909.mp4",
+            "room": "909",
+        })
+
+        # 4. Context now immediately includes the added database data
+        ctx_after = build_database_context(self.store)
+        self.assertIn("Room 909", ctx_after)
+        self.assertIn("fall_live_909", ctx_after)
+        self.assertIn("clip_live_909", ctx_after)
+        self.assertIn("confidence=94%", ctx_after)
+
+    @patch("urllib.request.urlopen")
+    def test_ask_chatbot_passes_live_database_data_to_prompt(self, mock_urlopen) -> None:
+        self.store.add_fall_location({
+            "fall_id": "fall_db_101",
+            "room": "101",
+            "source_kind": "upload",
+            "source_id": "job_101",
+            "track_id": 1,
+            "detected_at_seconds": 4.2,
+            "onset_seconds": 3.8,
+            "onset_x": 0.5, "onset_y": 0.5,
+            "landing_x": 0.52, "landing_y": 0.8,
+            "body_width": 0.2,
+            "onset_estimated": 0,
+            "frame_width": 640, "frame_height": 480,
+            "confidence": 0.88,
+            "created_at_utc": "2026-10-24T15:30:00Z",
+        })
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({
+            "response": "According to the database, 1 fall was detected in Room 101 with 88% confidence."
+        }).encode("utf-8")
+        mock_urlopen.return_value.__enter__.return_value = mock_response
+
+        res = ask_facility_chatbot(self.store, "How many falls are recorded in Room 101?")
+        self.assertIn("101", res["reply"])
+        # Verify that prompt sent to Ollama contained the fall location
+        call_args = mock_urlopen.call_args[0][0]
+        req_body = json.loads(call_args.data.decode("utf-8"))
+        self.assertIn("fall_db_101", req_body["prompt"])
+        self.assertIn("Room 101", req_body["prompt"])
 
 
 class DispatchAndChatApiTests(unittest.TestCase):

@@ -499,3 +499,54 @@ class Store:
         keys = list(row)
         self._write(f"INSERT OR REPLACE INTO room_photos ({','.join(keys)}) VALUES ({','.join('?' * len(keys))})",
                     tuple(row.values()))
+
+    # ----- live database introspection methods for facility queries & chatbot
+
+    def recent_fall_locations(self, limit: int = 50) -> list[dict[str, Any]]:
+        return self._read(
+            "SELECT fall_id, room, source_kind, track_id, detected_at_seconds, confidence, "
+            "onset_x, onset_y, landing_x, landing_y, created_at_utc "
+            "FROM fall_locations ORDER BY created_at_utc DESC LIMIT ?",
+            (limit,)
+        )
+
+    def recent_clips(self, limit: int = 50) -> list[dict[str, Any]]:
+        return self._read(
+            "SELECT clip_id, room, source_kind, status, detected_at_seconds, confidence, "
+            "clip_start_seconds, duration_seconds, created_at_utc, file_name "
+            "FROM clips ORDER BY created_at_utc DESC LIMIT ?",
+            (limit,)
+        )
+
+    def recent_jobs(self, limit: int = 25) -> list[dict[str, Any]]:
+        return self._read(
+            "SELECT job_id, owner, state, progress, source_kind, created_at_utc, model_version, error_message "
+            "FROM jobs ORDER BY created_at_utc DESC LIMIT ?",
+            (limit,)
+        )
+
+    def recent_incidents(self, limit: int = 50) -> list[dict[str, Any]]:
+        return self._read(
+            "SELECT incident_id, job_id, detected_at_seconds, confidence, status, created_at_utc, track_id "
+            "FROM incidents ORDER BY created_at_utc DESC LIMIT ?",
+            (limit,)
+        )
+
+    def recent_live_sessions(self, limit: int = 20) -> list[dict[str, Any]]:
+        return self._read(
+            "SELECT session_id, state, frames_processed, created_at_utc, ended_at_utc, error_message "
+            "FROM live_sessions ORDER BY created_at_utc DESC LIMIT ?",
+            (limit,)
+        )
+
+    def database_stats(self) -> dict[str, int]:
+        """Return total row counts for all key tables in the database."""
+        stats = {}
+        for tbl in ('daily_summaries', 'caretaker_emails', 'fall_locations',
+                    'clips', 'jobs', 'incidents', 'live_sessions', 'room_photos'):
+            try:
+                res = self._read(f"SELECT COUNT(*) AS n FROM {tbl}")
+                stats[tbl] = res[0]['n'] if res else 0
+            except Exception:
+                stats[tbl] = 0
+        return stats
