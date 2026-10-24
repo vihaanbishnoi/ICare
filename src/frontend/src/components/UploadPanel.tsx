@@ -5,6 +5,7 @@ import { useJobPoller } from '../hooks/useJobPoller';
 import { useRoomChoice } from '../hooks/useRoomChoice';
 import { RoomPicker } from './RoomPicker';
 import { ConfidenceChart } from './ConfidenceChart';
+import { FallLocationPanel } from './FallLocationPanel';
 import { ResultsSide } from './ResultsPanel';
 import { VideoPlayer } from './VideoPlayer';
 
@@ -151,6 +152,8 @@ export function UploadPanel() {
               durationSeconds={result.duration_seconds} currentTime={videoTime}
               emptyText="No predictions: the video never had six poses spanning two seconds." />
           </section>
+          <FallLocationPanel falls={result.incidents.map(item => ({
+            id: item.incident_id, clipId: item.clip_id, at: item.detected_at_seconds, person: item.track_id }))} />
         </>}
       </div>
 

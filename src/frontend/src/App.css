@@ -336,3 +336,19 @@ canvas.stage__media { display: block; width: 100%; height: auto; max-height: 70v
   .progress__fill { transition: none; }
   .progress__fill[data-indeterminate='true'] { animation: none; width: 100%; opacity: 0.5; }
 }
+
+/* Where a fall happened: the highlighted picture, and the room's danger-zone map. */
+.zonemap { position: relative; width: 100%; border-radius: 14px; overflow: hidden; background: #16191d; }
+.zonemap img, .zonemap canvas, .zonemap__blank { position: absolute; inset: 0; width: 100%; height: 100%; }
+.zonemap img { object-fit: fill; }
+.zonemap__blank {
+  display: grid; place-items: center; padding: 24px; text-align: center; color: #aab0b8; font-size: 13px;
+  background-image: linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.fallpic { display: flex; flex-direction: column; gap: 12px; }
+.fallpic__body { display: flex; flex-direction: column; gap: 10px; }
+.fallpic__image { width: 100%; max-height: 520px; object-fit: contain; border-radius: 10px; background: var(--stage); }
+.fallpic__zone { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.fallpic__zone h3 { font-size: 0.9375rem; color: var(--ink-2); }

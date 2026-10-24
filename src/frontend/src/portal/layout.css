@@ -168,3 +168,14 @@ li[data-open] .p-alerts__conf b { background: var(--p-accent); }
 }
 .p-livealerts .p-alerts { display: flex; flex-direction: column; }
 .p-livealerts .p-alerts li { flex-shrink: 0; }
+
+/* sidebar: never cut off; nav scrolls, profile stays pinned */
+@media (min-width: 901px) {
+  .p-side { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--p-line) transparent; padding-bottom: 0; }
+  .p-side__brand { padding-bottom: 12px; }
+  .p-side__label { padding: 12px 10px 4px; }
+  .p-nav { height: 36px; }
+  .p-wing { padding: 6px 10px; }
+  .p-side__foot { gap: 8px; }
+  .p-user { position: sticky; bottom: 0; background: var(--p-card); padding: 12px 8px 16px; margin: 0 -8px; z-index: 1; }
+}

@@ -133,12 +133,35 @@ def estimate_fall_location(
 
 # ----------------------------------------------------------------- per-fall picture
 
+RED, ORANGE = (40, 40, 235), (0, 150, 255)   # BGR
+
+
+def _glow(image: np.ndarray, centre: tuple[int, int], radius: int, colour: tuple[int, int, int], strength: float) -> None:
+    """Blend a soft filled blob of ``colour`` into ``image``, strongest at ``centre``."""
+    height, width = image.shape[:2]
+    reach = radius * 2
+    x0, y0 = max(0, centre[0] - reach), max(0, centre[1] - reach)
+    x1, y1 = min(width, centre[0] + reach + 1), min(height, centre[1] + reach + 1)
+    if x1 <= x0 or y1 <= y0:
+        return
+    mask = np.zeros((y1 - y0, x1 - x0), np.float32)
+    cv2.circle(mask, (centre[0] - x0, centre[1] - y0), radius, 1.0, -1, cv2.LINE_AA)
+    kernel = (radius * 2) | 1
+    mask = cv2.GaussianBlur(mask, (kernel, kernel), radius / 2)
+    peak = float(mask.max())
+    if peak <= 0:
+        return
+    alpha = (mask / peak * strength)[..., None]
+    region = image[y0:y1, x0:x1].astype(np.float32)
+    image[y0:y1, x0:x1] = (region * (1 - alpha) + np.array(colour, np.float32) * alpha).astype(np.uint8)
+
+
 def render_snapshot(frame_bgr: np.ndarray, location: Mapping[str, Any]) -> bytes:
-    """JPEG of the frame with the fall marked: red ring where it began, orange where it ended."""
+    """JPEG of the frame with a red area where the fall began and an orange one where it ended."""
 
     image = frame_bgr.copy()
     height, width = image.shape[:2]
-    radius = max(14, int(round(location["body_width"] * width * 0.45)))
+    radius = max(24, int(round(location["body_width"] * width * 0.7)))
 
     def at(x: float, y: float) -> tuple[int, int]:
         return (int(round(x * (width - 1))), int(round(y * (height - 1))))
@@ -146,16 +169,25 @@ def render_snapshot(frame_bgr: np.ndarray, location: Mapping[str, Any]) -> bytes
     onset = at(location["onset_x"], location["onset_y"])
     landing = at(location["landing_x"], location["landing_y"])
     if location["onset_estimated"]:
-        cv2.line(image, onset, landing, (255, 255, 255), 2, cv2.LINE_AA)
-        cv2.circle(image, landing, max(8, radius // 2), (0, 140, 255), 3, cv2.LINE_AA)
-    cv2.circle(image, onset, radius, (0, 0, 230), 4, cv2.LINE_AA)
-    cv2.circle(image, onset, 5, (0, 0, 230), -1, cv2.LINE_AA)
-    caption = ("Red ring: fall began here. Orange ring: landed here."
-               if location["onset_estimated"] else "Red ring: where the person was when the fall was detected.")
-    scale = max(0.5, width / 1280)
-    cv2.rectangle(image, (0, height - int(34 * scale)), (width, height), (0, 0, 0), -1)
-    cv2.putText(image, caption, (10, height - int(11 * scale)), cv2.FONT_HERSHEY_SIMPLEX, 0.6 * scale,
-                (255, 255, 255), max(1, int(round(scale))), cv2.LINE_AA)
+        _glow(image, landing, int(radius * 0.8), ORANGE, 0.5)
+        gap = float(np.hypot(landing[0] - onset[0], landing[1] - onset[1]))
+        if gap > radius * 2.2:   # far enough apart for an arrow that starts and ends outside both areas
+            ux, uy = (landing[0] - onset[0]) / gap, (landing[1] - onset[1]) / gap
+            tail = (int(onset[0] + ux * radius), int(onset[1] + uy * radius))
+            tip = (int(landing[0] - ux * radius * 0.9), int(landing[1] - uy * radius * 0.9))
+            cv2.arrowedLine(image, tail, tip, (255, 255, 255), 2, cv2.LINE_AA, tipLength=0.15)
+    _glow(image, onset, radius, RED, 0.65)
+    cv2.circle(image, onset, max(6, radius // 3), (255, 255, 255), 2, cv2.LINE_AA)
+    caption = ("Red area: where the fall began. Orange area: where the person landed."
+               if location["onset_estimated"] else "Red area: where the person was when the fall was detected.")
+    font, thickness = cv2.FONT_HERSHEY_SIMPLEX, max(1, round(width / 640))
+    size = max(0.6, width / 1280)
+    while size > 0.25 and cv2.getTextSize(caption, font, size, thickness)[0][0] > width - 20:
+        size -= 0.05   # shrink the caption until it fits the picture
+    text_height = cv2.getTextSize(caption, font, size, thickness)[0][1]
+    # At the top: people's feet, where falls begin, are usually near the bottom of the frame.
+    cv2.rectangle(image, (0, 0), (width, text_height + 14), (0, 0, 0), -1)
+    cv2.putText(image, caption, (10, text_height + 7), font, size, (255, 255, 255), thickness, cv2.LINE_AA)
     if width > SNAPSHOT_WIDTH:
         image = cv2.resize(image, (SNAPSHOT_WIDTH, round(height * SNAPSHOT_WIDTH / width)), interpolation=cv2.INTER_AREA)
     ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 85])
