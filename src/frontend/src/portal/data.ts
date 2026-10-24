@@ -197,23 +197,6 @@ export function syncDetectorClips(clips: Clip[]) {
     }) });
 }
 
-/** Light background drift so statuses look live. Only one tab (the manager) drives it. */
-export function useSimulation(enabled: boolean) {
-  useEffect(() => {
-    if (!enabled) return;
-    const drift = window.setInterval(() => {
-      const options: ResidentStatus[] = ['active', 'resting', 'away'];
-      const movable = state.residents.filter(r => r.status !== 'fall');
-      if (!movable.length) return;
-      const pick = movable[Math.floor(Math.random() * movable.length)];
-      const status = options[Math.floor(Math.random() * options.length)];
-      commit({ ...state, residents: state.residents.map(r => r.id === pick.id ? { ...r, status, since: now() } : r) });
-    }, 9000);
-    // No random falls: fall alerts now come only from the real detector (live camera or uploaded video).
-    return () => { window.clearInterval(drift); };
-  }, [enabled]);
-}
-
 /* ---------- session ---------- */
 
 export function loadSession(): Session | null {

@@ -5,7 +5,7 @@ import { LivePanel } from '../components/LivePanel';
 import { UploadPanel } from '../components/UploadPanel';
 import {
   acknowledgeFall, ago, ALL_ROOMS, bytesLabel, clock, dayStats, DETECTOR, DETECTOR_ID, duration, residentName,
-  responseSeconds, sendMessage, syncDetectorClips, useNow, useSimulation, useStore, wingLabel,
+  responseSeconds, sendMessage, syncDetectorClips, useNow, useStore, wingLabel,
   type FallEvent, type Resident, type Session,
 } from './data';
 import { deleteRoomFall } from '../api/client';
@@ -53,7 +53,6 @@ export function Manager({ session, onSignOut }: { session: Session; onSignOut: (
   const [notify, setNotify] = useState<{ residentId: string | 'all'; preset?: string } | null>(null);
   const [toasts, setToasts] = useState<FallEvent[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
-  useSimulation(true);
   const nowT = useNow(1000);
 
   // Falls found by the real detector (live camera or uploaded video) join the feed with their clip.
