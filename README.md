@@ -128,9 +128,11 @@ you respond to an alert with "False alarm").
 - **Coordinates:** image positions from the fixed camera, normalised to 0..1, not floor
   measurements. They only line up while the camera has not moved; if it moves, remove the
   old falls or use a new room name.
-- **Picture:** each clip also gets a still of the moment the fall began, with a red ring
-  where it began and an orange ring where the person landed (`GET /api/v1/clips/{id}/snapshot`).
-  It shows a person, so it is deleted with the clip after 24 hours.
+- **Picture:** each clip also gets a still of the moment the fall began, with a soft red area
+  where it began and an orange one where the person landed (`GET /api/v1/clips/{id}/snapshot`).
+  Video analysis and Live detection show it in a **Where the fall happened** panel, under the
+  room's accumulated danger zone when a room was chosen. It shows a person, so it is deleted
+  with the clip after 24 hours.
 - **Kept long term, shared:** only the coordinates, times and a reference photo of the room
   are kept (no expiry), and they are visible to everyone using the server, so caretakers on
   different computers see the same map. The photo is the first frame found with nobody in

@@ -2,6 +2,7 @@ import { useLiveCamera } from '../hooks/useLiveCamera';
 import { useRoomChoice } from '../hooks/useRoomChoice';
 import { RoomPicker } from './RoomPicker';
 import { ConfidenceChart } from './ConfidenceChart';
+import { FallLocationPanel } from './FallLocationPanel';
 import { IncidentTable, Readout } from './ResultsPanel';
 import { personColor, personName } from '../lib/people';
 
@@ -70,6 +71,8 @@ export function LivePanel() {
             currentTime={showFrame ? now : undefined}
             emptyText="The trace starts once enough continuous poses have been collected." />
         </section>
+        <FallLocationPanel newestFirst falls={live.incidents.map(item => ({
+          id: item.incident_id, clipId: item.clip_id, at: item.detected_at_seconds, person: item.track_id }))} />
       </div>
 
       <aside className="workspace__side" aria-label="Live session details">

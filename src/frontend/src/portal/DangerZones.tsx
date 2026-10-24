@@ -1,67 +1,20 @@
 /** Danger zones: where falls happen in each room, built up over time from a fixed camera. */
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useState, type ChangeEvent } from 'react';
 import { deleteRoomFall, putRoomPhoto } from '../api/client';
 import { useClipList } from '../hooks/useClips';
 import { useDangerZone, useRoomSummaries } from '../hooks/useDangerZone';
+import { ZoneMap } from '../components/ZoneMap';
 import { personName } from '../lib/people';
+import { LANDING_RGB, ONSET_RGB, type Layer } from '../lib/zone';
 import type { DangerZone } from '../types';
 import { ROOMS } from './data';
 import { Icon, Modal } from './ui';
 import './zones.css';
 
-type Layer = 'onset' | 'landing' | 'both';
 const LAYERS: { id: Layer; label: string }[] = [
   { id: 'onset', label: 'Where it began' }, { id: 'landing', label: 'Where they landed' }, { id: 'both', label: 'Both' },
 ];
 const FEW_FALLS = 5;
-const MAP_WIDTH = 960;
-const ONSET = '220, 38, 38';
-const LANDING = '245, 158, 11';
-
-/** Every recorded fall as a soft red spot over the room photo: spots overlap where falls cluster. */
-function ZoneMap({ zone, layer }: { zone: DangerZone; layer: Layer }) {
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const aspect = zone.frame_width && zone.frame_height ? zone.frame_height / zone.frame_width : 9 / 16;
-  const height = Math.round(MAP_WIDTH * aspect);
-
-  useEffect(() => {
-    const element = canvas.current;
-    const context = element?.getContext('2d');
-    if (!element || !context) return;
-    context.clearRect(0, 0, element.width, element.height);
-    const spot = (x: number, y: number, bodyWidth: number, rgb: string, alpha: number) => {
-      const cx = x * element.width, cy = y * element.height;
-      const radius = Math.min(0.12, Math.max(0.035, bodyWidth * 0.7)) * element.width;
-      const gradient = context.createRadialGradient(cx, cy, 0, cx, cy, radius);
-      gradient.addColorStop(0, `rgba(${rgb}, ${alpha})`);
-      gradient.addColorStop(1, `rgba(${rgb}, 0)`);
-      context.fillStyle = gradient;
-      context.beginPath(); context.arc(cx, cy, radius, 0, Math.PI * 2); context.fill();
-    };
-    const dot = (x: number, y: number, rgb: string) => {
-      context.beginPath(); context.arc(x * element.width, y * element.height, 5, 0, Math.PI * 2);
-      context.fillStyle = `rgb(${rgb})`; context.fill();
-      context.lineWidth = 2; context.strokeStyle = '#fff'; context.stroke();
-    };
-    for (const fall of zone.falls) {
-      // An onset that could not be estimated repeats the landing point, so it is drawn fainter.
-      if (layer !== 'landing') spot(fall.onset_x, fall.onset_y, fall.body_width, ONSET, fall.onset_estimated ? 0.4 : 0.18);
-      if (layer !== 'onset') spot(fall.landing_x, fall.landing_y, fall.body_width, LANDING, 0.3);
-    }
-    for (const fall of zone.falls) {
-      if (layer !== 'landing') dot(fall.onset_x, fall.onset_y, ONSET);
-      if (layer !== 'onset') dot(fall.landing_x, fall.landing_y, LANDING);
-    }
-  }, [zone, layer, height]);
-
-  return <div className="zonemap" style={{ aspectRatio: `${MAP_WIDTH} / ${height}` }}>
-    {zone.photo_url
-      ? <img src={zone.photo_url} alt={`Room ${zone.room} as the fixed camera sees it`} />
-      : <div className="zonemap__blank">No room photo yet. Use Replace photo, or analyze with this room selected.</div>}
-    <canvas ref={canvas} width={MAP_WIDTH} height={height} role="img"
-      aria-label={`${zone.falls.length} recorded fall positions overlaid on the room`} />
-  </div>;
-}
 
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 
@@ -150,8 +103,8 @@ export function DangerZones() {
       <section className="p-card p-zoneinfo">
         <header className="p-card__head"><span>Reading the map</span></header>
         <ul className="p-zonelegend">
-          <li><i style={{ background: `rgb(${ONSET})` }} />Where the person was when the fall began</li>
-          <li><i style={{ background: `rgb(${LANDING})` }} />Where they landed</li>
+          <li><i style={{ background: `rgb(${ONSET_RGB})` }} />Where the person was when the fall began</li>
+          <li><i style={{ background: `rgb(${LANDING_RGB})` }} />Where they landed</li>
           <li><i className="p-zonelegend__faint" />Faint red: the start of the fall could not be worked out, so the landing point is used</li>
         </ul>
         <p className="p-muted p-small">Positions come from the fixed camera's image, not floor measurements, and are only comparable while the camera has not moved. The start of a fall is estimated from the body's movement and has not been validated against labelled data. Remove false alarms with the Remove button, or choose "False alarm" when responding to an alert.</p>

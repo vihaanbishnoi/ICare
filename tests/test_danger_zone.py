@@ -124,15 +124,36 @@ class LocationTests(unittest.TestCase):
 
 
 class SnapshotTests(unittest.TestCase):
-    def test_picture_marks_where_the_fall_began(self):
+    def test_picture_highlights_a_red_area_where_the_fall_began(self):
         location = estimate_fall_location(fall_track(), 5.0, W, H)
         data = render_snapshot(np.full((H, W, 3), 90, np.uint8), location)
         image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
         self.assertEqual(image.shape[:2], (H, W))
         x, y = round(location["onset_x"] * (W - 1)), round(location["onset_y"] * (H - 1))
+
+        def redness(px, py):
+            b, g, r = (int(v) for v in image[py, px])
+            return r - (b + g) / 2
+
+        area = [redness(min(W - 1, x + dx), y - 16) for dx in (-20, 0, 20)]   # inside the glow, off the white ring
+        far = redness(min(W - 1, x + 150), 20)                                # well away from it
+        self.assertTrue(all(value > 40 for value in area), area)   # a clearly red area, not a thin line
+        self.assertLess(abs(far), 15)                              # the rest of the picture is untouched
+
+    def test_landing_is_an_orange_area_when_the_start_was_found(self):
+        location = estimate_fall_location(fall_track(), 5.0, W, H)
+        image = cv2.imdecode(np.frombuffer(render_snapshot(np.full((H, W, 3), 90, np.uint8), location), np.uint8), cv2.IMREAD_COLOR)
+        x, y = round(location["landing_x"] * (W - 1)), round(location["landing_y"] * (H - 1))
         b, g, r = (int(v) for v in image[y, x])
-        self.assertGreater(r, 150)           # the red centre dot
-        self.assertLess(g, 100)
+        self.assertGreater(r - b, 60)    # orange: strong red, some green, little blue
+        self.assertGreater(g, b + 20)
+
+    def test_without_a_found_start_only_the_red_area_is_drawn(self):
+        track = [{"track_id": 1, "timestamp_seconds": 2 + i / 6, **standing()} for i in range(12)]
+        location = estimate_fall_location(track, track[-1]["timestamp_seconds"], W, H)
+        self.assertFalse(location["onset_estimated"])
+        image = cv2.imdecode(np.frombuffer(render_snapshot(np.full((H, W, 3), 90, np.uint8), location), np.uint8), cv2.IMREAD_COLOR)
+        self.assertGreater(len(image), 0)
 
     def test_wide_frames_are_scaled_down(self):
         location = estimate_fall_location(fall_track(), 5.0, 1920, 1080)

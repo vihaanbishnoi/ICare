@@ -42,8 +42,8 @@ export function ClipView({ clipId, onDeleted }: { clipId: string; onDeleted?: ()
           aria-label={`Fall clip, ${seconds(clip.duration_seconds ?? 0)}`} onError={() => setPlayable(false)} />
       : <p className="notice" role="alert">This browser cannot play the clip. <a href={clip.video_url} download>Download it</a> instead.</p>}
     {clip.snapshot_url && <div className="clip__snapshot">
-      <img src={clip.snapshot_url} alt="A frame from the fall with the spot where it began marked in red" />
-      <p className="hint">Where the fall began (red ring) and ended (orange ring). Deleted with the clip; the position stays in the room's danger zone.</p>
+      <img src={clip.snapshot_url} alt="A frame from the fall with the area where it began highlighted in red" />
+      <p className="hint">Where the fall began (red area) and ended (orange area). Deleted with the clip; the position stays in the room's danger zone.</p>
     </div>}
     <figcaption>
       <dl className="facts">
