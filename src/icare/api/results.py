@@ -37,6 +37,7 @@ def build_result(
     poses: list[dict[str, Any]],
     incidents: list[dict[str, Any]],
     processing_seconds: float,
+    behaviour_events: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     inference_times = [
         p["inference_ms"] for p in predictions if p.get("inference_ms") is not None
@@ -63,6 +64,7 @@ def build_result(
         "predictions": predictions,
         "poses": poses,
         "incidents": incidents,
+        "behaviour_events": behaviour_events or [],
         "metrics": metrics,
         "reports": {
             "json": job_url(job_id, "/reports/json"),

@@ -3,9 +3,10 @@
  * Never construct absolute URLs here; the cookie is SameSite=strict.
  */
 import type {
-  Clip, ClipList, DangerZone, Job, Result, LiveSession, LiveFrame, LiveHistory, RoomSummary,
+  BehaviourEvent, Clip, ClipList, DangerZone, Job, Result, LiveSession, LiveFrame, LiveHistory, RoomSummary,
   DailyLogsResponse, DailySummaryResponse, CaretakersListResponse,
-  SchedulerStatusResponse, Trigger10pmResponse, ChatMessage, ChatResponse
+  SchedulerStatusResponse, Trigger10pmResponse, ChatMessage, ChatResponse,
+  Resident, ResidentList,
 } from '../types';
 
 const BASE = '/api/v1';
@@ -152,4 +153,29 @@ export async function putRoomPhoto(room: string, file: File): Promise<void> {
 /** DELETE /api/v1/rooms/{room}/falls/{id}: take one fall (e.g. a false alarm) out of the zone. */
 export async function deleteRoomFall(room: string, fallId: string): Promise<void> {
   await apiFetch<void>(`/rooms/${encodeURIComponent(room)}/falls/${encodeURIComponent(fallId)}`, { method: 'DELETE' });
+}
+
+/** GET /api/v1/behaviour/events: this browser's latest unusual-behaviour events, newest first. */
+export async function fetchBehaviourEvents(signal?: AbortSignal): Promise<BehaviourEvent[]> {
+  const result = await apiFetch<{ events: BehaviourEvent[] }>('/behaviour/events', { signal });
+  return result.events;
+}
+
+/** GET /api/v1/residents: enrolled residents, facility-wide. */
+export function fetchResidents(signal?: AbortSignal): Promise<ResidentList> {
+  return apiFetch<ResidentList>('/residents', { signal });
+}
+
+/** POST /api/v1/residents  →  201 Resident. 400 no_face / multiple_faces / invalid_image, 503 face_models_unavailable. */
+export function enrollResident(name: string, room: string, files: File[]): Promise<Resident> {
+  const form = new FormData();
+  form.append('name', name.trim());
+  if (room.trim()) form.append('room', room.trim());
+  for (const file of files) form.append('photos', file);
+  // Do NOT set Content-Type — browser must set multipart boundary
+  return apiFetch<Resident>('/residents', { method: 'POST', body: form });
+}
+
+export async function deleteResident(residentId: string): Promise<void> {
+  await apiFetch<void>(`/residents/${encodeURIComponent(residentId)}`, { method: 'DELETE' });
 }

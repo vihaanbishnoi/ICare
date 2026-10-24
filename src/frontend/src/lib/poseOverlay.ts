@@ -20,9 +20,10 @@ const SKELETON: [number, number][] = [
 /**
  * One person's box, skeleton and label. ``falling`` marks a recorded incident for
  * this person; ``probability`` is their latest P(Fall), shown in the label.
+ * ``name`` (an enrolled resident) is drawn as a separate tag above the label.
  */
 export function drawPose(ctx: CanvasRenderingContext2D, pose: Pose, scaleX: number, scaleY: number,
-                         falling: boolean, probability: number | null = null) {
+                         falling: boolean, probability: number | null = null, name: string | null = null) {
   const color = falling ? ALERT : personColor(pose.track_id);
   const [x1, y1, x2, y2] = pose.bbox_xyxy.map((v, i) => i % 2 === 0 ? v * scaleX : v * scaleY);
   ctx.strokeStyle = color;
@@ -40,6 +41,7 @@ export function drawPose(ctx: CanvasRenderingContext2D, pose: Pose, scaleX: numb
   ctx.fillRect(x1, top, width, 18);
   ctx.fillStyle = color;
   ctx.fillText(label, x1 + 5, top + 13);
+  if (name) drawNameTag(ctx, name, x1, top);
 
   const kp = pose.keypoints;
   ctx.lineCap = 'round';
@@ -61,4 +63,21 @@ export function drawPose(ctx: CanvasRenderingContext2D, pose: Pose, scaleX: numb
       ctx.fill();
     }
   });
+}
+
+/** White-on-dark name tag sized to the canvas; drops below the label when there is no room above. */
+function drawNameTag(ctx: CanvasRenderingContext2D, name: string, x: number, labelTop: number) {
+  const size = Math.max(12, Math.round(ctx.canvas.height * 0.028));
+  const pad = Math.round(size * 0.4);
+  const height = size + pad * 2;
+  ctx.font = `600 ${size}px ${MONO}`;
+  const width = ctx.measureText(name).width + pad * 2;
+  const top = labelTop - height - 2 >= 0 ? labelTop - height - 2 : labelTop + 20;
+  const left = Math.max(0, Math.min(x, ctx.canvas.width - width));
+  ctx.fillStyle = 'rgba(8,14,13,0.82)';
+  ctx.fillRect(left, top, width, height);
+  ctx.fillStyle = '#fff';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(name, left + pad, top + height / 2);
+  ctx.textBaseline = 'alphabetic';
 }

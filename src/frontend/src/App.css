@@ -14,6 +14,8 @@
   --accent-soft: #d9ecec;
   --alert: #b3261e;
   --alert-soft: #fbe8e5;
+  --attention: #8a5a00;
+  --attention-soft: #fdf1d8;
   --stage: #121918;
   --stage-ink: #c9d3cf;
   --sans: 'Atkinson Hyperlegible Next', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -36,6 +38,8 @@
   --accent-soft: #17343a;
   --alert: #f28b77;
   --alert-soft: #3a1f1b;
+  --attention: #f2c066;
+  --attention-soft: #33290f;
   --stage: #0b100f;
   --stage-ink: #b3beba;
   color-scheme: dark;
@@ -55,6 +59,8 @@
     --accent-soft: #17343a;
     --alert: #f28b77;
     --alert-soft: #3a1f1b;
+    --attention: #f2c066;
+    --attention-soft: #33290f;
     --stage: #0b100f;
     --stage-ink: #b3beba;
     color-scheme: dark;
@@ -154,6 +160,7 @@ button { font: inherit; color: inherit; }
   border-radius: 8px; background: var(--surface); color: var(--ink-2); font-size: 0.9375rem;
 }
 .notice--alert { border-left-color: var(--alert); background: var(--alert-soft); color: var(--ink); }
+.notice--attention { border-left-color: var(--attention); background: var(--attention-soft); color: var(--ink); }
 
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
 .workspace__main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
@@ -271,6 +278,15 @@ canvas.stage__media { display: block; width: 100%; height: auto; max-height: 70v
 .people li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 0.875rem; }
 .people li:last-child { border-bottom: 0; }
 .people li[data-alert='true'] .num { color: var(--alert); font-weight: 700; }
+.people__behaviour { display: block; font-size: 0.8125rem; color: var(--ink-3); }
+.people__behaviour[data-tone='attention'] { color: var(--attention); font-weight: 700; }
+.people__behaviour[data-tone='urgent'] { color: var(--alert); font-weight: 700; }
+.behaviour-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.behaviour-list li { padding: 8px 10px; border-radius: 8px; border-left: 3px solid var(--attention); background: var(--attention-soft); font-size: 0.875rem; }
+.behaviour-list li[data-severity='urgent'] { border-left-color: var(--alert); background: var(--alert-soft); }
+.behaviour-list li[data-ended='true'] { border-left-color: var(--line); background: var(--surface-2); }
+.behaviour-list strong { display: block; }
+.behaviour-list span { color: var(--ink-2); }
 
 /* Public site ---------------------------------------------------------------- */
 .page--site { display: flex; flex-direction: column; align-items: center; padding-top: 0; }

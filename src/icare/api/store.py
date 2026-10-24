@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import sqlite3
 import threading
@@ -99,6 +100,24 @@ CREATE TABLE IF NOT EXISTS live_incidents (
     detected_at_seconds REAL NOT NULL, confidence REAL NOT NULL, created_at_utc TEXT NOT NULL,
     track_id INTEGER
 );
+CREATE TABLE IF NOT EXISTS behaviour_events (
+    event_id TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    source_kind TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    track_id INTEGER,
+    identity TEXT,
+    event_type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    start_seconds REAL NOT NULL,
+    detected_at_seconds REAL NOT NULL,
+    end_seconds REAL,
+    end_reason TEXT,
+    evidence TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS behaviour_owner ON behaviour_events(owner, created_at_utc);
+CREATE INDEX IF NOT EXISTS behaviour_source ON behaviour_events(source_id);
 CREATE TABLE IF NOT EXISTS daily_summaries (
     summary_id TEXT PRIMARY KEY,
     date_str TEXT NOT NULL,
@@ -147,6 +166,11 @@ class Store:
                     self._db.execute(f'ALTER TABLE {table} ADD COLUMN track_id INTEGER')
                 if 'clip_id' not in columns:
                     self._db.execute(f'ALTER TABLE {table} ADD COLUMN clip_id TEXT')
+                if 'identity' not in columns:
+                    self._db.execute(f'ALTER TABLE {table} ADD COLUMN identity TEXT')
+            for table in ('behaviour_events', 'clips'):
+                if 'identity' not in {row[1] for row in self._db.execute(f'PRAGMA table_info({table})')}:
+                    self._db.execute(f'ALTER TABLE {table} ADD COLUMN identity TEXT')
             # Room support: jobs remember the room they were started for; clips remember it
             # and their per-fall picture.
             for table, column in (('jobs', 'room'), ('clips', 'room'), ('clips', 'snapshot_file')):
@@ -290,7 +314,8 @@ class Store:
                     (state, utc_now(), frames, error, session_id))
 
     def add_live_incident(self, incident):
-        keys = ('incident_id', 'session_id', 'track_id', 'clip_id', 'detected_at_seconds', 'confidence', 'created_at_utc')
+        keys = ('incident_id', 'session_id', 'track_id', 'identity', 'clip_id', 'detected_at_seconds', 'confidence',
+                'created_at_utc')
         self._write(f"INSERT INTO live_incidents ({','.join(keys)}) VALUES ({','.join('?' * len(keys))})",
                     tuple(incident.get(key) for key in keys))
 
@@ -300,6 +325,7 @@ class Store:
             session.pop('owner')
             session['incidents'] = self._read('SELECT * FROM live_incidents WHERE session_id=? ORDER BY detected_at_seconds, track_id',
                                              (session['session_id'],))
+            session['behaviour_events'] = self.behaviour_events_for_source(session['session_id'])
         return sessions
 
     def fail_interrupted_live(self):
@@ -308,6 +334,39 @@ class Store:
 
     def prune_live_history(self, cutoff):
         self._write("DELETE FROM live_sessions WHERE created_at_utc<? AND state!='active'", (cutoff,))
+        self._write("DELETE FROM behaviour_events WHERE source_kind='live' "
+                    "AND source_id NOT IN (SELECT session_id FROM live_sessions)")
+
+    # ----- unusual-behaviour events (icare.inference.behaviour)
+
+    BEHAVIOUR_COLUMNS = ('event_id', 'owner', 'source_kind', 'source_id', 'track_id', 'identity', 'event_type', 'severity',
+                         'start_seconds', 'detected_at_seconds', 'end_seconds', 'end_reason', 'evidence',
+                         'created_at_utc')
+
+    def save_behaviour_event(self, owner: str, event: dict[str, Any]) -> None:
+        """Insert or update one event (live events are saved when opened and again when ended)."""
+        row = {**event, 'owner': owner, 'evidence': json.dumps(event['evidence'])}
+        keys = self.BEHAVIOUR_COLUMNS
+        self._write(f"INSERT OR REPLACE INTO behaviour_events ({','.join(keys)}) VALUES ({','.join('?' * len(keys))})",
+                    tuple(row.get(key) for key in keys))
+
+    def _behaviour(self, sql: str, params: tuple) -> list[dict[str, Any]]:
+        rows = self._read(sql, params)
+        for row in rows:
+            row.pop('owner', None)
+            row['evidence'] = json.loads(row['evidence'])
+        return rows
+
+    def behaviour_events_for_source(self, source_id: str) -> list[dict[str, Any]]:
+        return self._behaviour('SELECT * FROM behaviour_events WHERE source_id=? ORDER BY detected_at_seconds, track_id',
+                               (source_id,))
+
+    def list_behaviour_events(self, owner: str, limit: int = 50) -> list[dict[str, Any]]:
+        return self._behaviour('SELECT * FROM behaviour_events WHERE owner=? ORDER BY created_at_utc DESC LIMIT ?',
+                               (owner, limit))
+
+    def delete_behaviour_events(self, source_id: str) -> None:
+        self._write('DELETE FROM behaviour_events WHERE source_id=?', (source_id,))
 
     def fail_interrupted_jobs(self) -> None:
         """Jobs left active by a previous process can never finish."""
@@ -327,6 +386,7 @@ class Store:
 
     def delete_job(self, job_id: str) -> None:
         self._write("DELETE FROM jobs WHERE job_id = ?", (job_id,))
+        self.delete_behaviour_events(job_id)
         self.finish_admission(job_id, 0)
 
     def add_incident(self, incident: dict[str, Any]) -> None:
@@ -349,7 +409,7 @@ class Store:
 
     # ----- fall clips (the files themselves are managed by icare.api.clips)
 
-    CLIP_COLUMNS = ('clip_id', 'owner', 'source_kind', 'source_id', 'track_id', 'status',
+    CLIP_COLUMNS = ('clip_id', 'owner', 'source_kind', 'source_id', 'track_id', 'identity', 'status',
                     'detected_at_seconds', 'confidence', 'clip_start_seconds', 'duration_seconds',
                     'created_at_utc', 'file_name', 'media_type', 'size_bytes', 'error_message',
                     'room', 'snapshot_file')

@@ -44,7 +44,9 @@ from icare.api.dispatch import (
     run_daily_10pm_routine,
     start_10pm_daily_scheduler,
 )
-from icare.api.schemas import LiveFrame, LiveHistoryResponse, LiveSession
+from icare.api.schemas import BehaviourEventList, LiveFrame, LiveHistoryResponse, LiveSession, Resident, ResidentList
+from icare.api.residents import Residents
+from icare.inference.identity import FaceError, FaceModels
 from icare.api.store import ACTIVE_STATES, Store, utc_now
 from icare.api.summary import load_daily_logs, summarize_daily_logs
 from icare.api.video import InvalidVideo, mp4_duration_seconds
@@ -82,6 +84,7 @@ def create_app(settings: Settings | None = None, engine: Any = _NOT_LOADED) -> F
         state.store.fail_interrupted_jobs()
         state.store.reconcile_admissions(settings.data_dir / 'jobs')
         state.admission_salt = state.store.admission_salt()
+        state.residents = Residents(settings.data_dir / "faces.json", FaceModels.load())
         state.clips = ClipManager.from_settings(state.store, settings)
         state.clips.startup()
         state.live = LiveManager(state.store, state.engine, settings, state.clips)
@@ -92,6 +95,7 @@ def create_app(settings: Settings | None = None, engine: Any = _NOT_LOADED) -> F
         state.runner = JobRunner(
             state.store, state.engine, settings.data_dir / "jobs", settings.job_timeout_seconds,
             settings.result_reserve_bytes, settings.fall_confirmations, state.clips,
+            settings.behaviour_monitor,
         )
         state.runner.start()
         remove_expired(state.store, settings, state.clips)
@@ -350,6 +354,39 @@ def live_history(request: Request, owner_key: str = Depends(owner)) -> dict:
             if active is not None and active['session_id'] == session['session_id'] and active['owner'] == owner_key:
                 session['frames_processed'] = active['frames']
     return {'sessions': sessions}
+
+
+@router.get('/behaviour/events', response_model=BehaviourEventList)
+def behaviour_events(request: Request, owner_key: str = Depends(owner)) -> dict:
+    """This browser's latest unusual-behaviour events (uploads and live), newest first."""
+    return {'events': request.app.state.store.list_behaviour_events(owner_key)}
+
+
+@router.get('/residents', response_model=ResidentList)
+def list_residents(request: Request) -> dict:
+    """Residents enrolled for face naming on this computer (names and photo counts only)."""
+    return request.app.state.residents.listing()
+
+
+@router.post('/residents', status_code=201, response_model=Resident, dependencies=[Depends(same_origin)])
+async def enrol_resident(request: Request) -> dict:
+    try:
+        form = await request.form(max_files=8)
+    except (MultiPartException, HTTPException) as error:
+        raise ApiError(400, 'invalid_form', 'Send the name and photos as a multipart form.') from error
+    photos = [await item.read() for item in form.getlist('photos') if isinstance(item, UploadFile)]
+    try:
+        return await asyncio.to_thread(request.app.state.residents.enrol, str(form.get('name') or ''),
+                                       str(form.get('room') or ''), photos)
+    except FaceError as error:
+        raise ApiError(503 if error.code == 'face_models_unavailable' else 400, error.code, str(error)) from error
+
+
+@router.delete('/residents/{resident_id}', status_code=204, dependencies=[Depends(same_origin)])
+def delete_resident(resident_id: str, request: Request) -> Response:
+    if not request.app.state.residents.delete(resident_id):
+        raise ApiError(404, 'not_found', 'No such resident.')
+    return Response(status_code=204)
 
 
 @router.get("/health")

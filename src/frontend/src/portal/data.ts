@@ -24,6 +24,8 @@ export interface FallEvent {
   note: string | null; clipSeed: number;
   /** Set for falls found by the real detector: the stored clip to play. Absent for simulated falls. */
   clipId?: string | null;
+  /** The enrolled resident the detector recognised in the fall, if any. */
+  who?: string | null;
 }
 
 export interface FamilyMessage {
@@ -62,6 +64,8 @@ export const DETECTOR: Resident = {
 };
 export const ALL_ROOMS = [...ROOMS, DETECTOR.room];
 export const wingLabel = (wing: string) => wing === DETECTOR.wing ? 'Detector' : `${wing} wing`;
+/** Who fell: the recognised resident for detector falls, else the room's resident. */
+export const fallName = (residents: Resident[], f: FallEvent) => f.who || residentName(residents, f.residentId);
 export const residentName = (residents: Resident[], id: string) =>
   residents.find(r => r.id === id)?.name ?? (id === DETECTOR_ID ? DETECTOR.name : '');
 
@@ -186,7 +190,7 @@ export function syncDetectorClips(clips: Clip[]) {
     const resident = c.room ? state.residents.find(r => r.room === c.room) : undefined;
     return [{ id, residentId: resident?.id ?? DETECTOR_ID, room: resident?.room ?? DETECTOR.room,
       wing: resident?.wing ?? DETECTOR.wing, at, confidence: c.confidence,
-      acknowledgedAt: null, acknowledgedBy: null, note: null, clipSeed: 0, clipId: c.clip_id }];
+      acknowledgedAt: null, acknowledgedBy: null, note: null, clipSeed: 0, clipId: c.clip_id, who: c.identity ?? null }];
   });
   if (!added.length) return;
   const recent = added.filter(f => f.residentId !== DETECTOR_ID && now() - f.at < 2 * MIN);

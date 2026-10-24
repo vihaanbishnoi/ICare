@@ -43,7 +43,7 @@ export function VideoPlayer({ mediaUrl, frameWidth, frameHeight, poses, predicti
       const latest = predictionsAtTime(predictions, t);
       for (const pose of posesAtTime(poses, t)) {
         drawPose(ctx, pose, scaleX, scaleY, hasRecordedIncident(incidents, t, pose.track_id),
-          latest.get(personKey(pose.track_id))?.fall_probability ?? null);
+          latest.get(personKey(pose.track_id))?.fall_probability ?? null, pose.identity ?? null);
       }
 
       rafRef.current = requestAnimationFrame(drawOverlay);

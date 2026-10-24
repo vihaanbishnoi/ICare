@@ -37,8 +37,11 @@ class JobRunner:
     def __init__(
         self, store: Store, engine: Engine | None, jobs_dir: Path, timeout_seconds: float,
         max_result_bytes: int = 16 * 1024 * 1024, fall_confirmations: int = 1, clips=None,
+        behaviour=None,
     ) -> None:
         self.store = store
+        # Callable returning a fresh icare.inference.behaviour.BehaviourMonitor, or None.
+        self.behaviour = behaviour
         self.clips = clips  # icare.api.clips.ClipManager, or None to keep no fall clips
         self.engine = engine
         self.jobs_dir = jobs_dir
@@ -131,9 +134,16 @@ class JobRunner:
         predictions: list[dict[str, Any]] = []
         poses: list[dict[str, Any]] = []
         incidents: list[dict[str, Any]] = []
+        monitor = self.behaviour() if self.behaviour is not None else None
+        names: dict[Any, str] = {}
 
         def on_pose(record: Mapping[str, Any]) -> None:
-            poses.append(_validated(Pose, record))
+            pose = _validated(Pose, record)
+            poses.append(pose)
+            if pose["identity"]:
+                names[pose["track_id"]] = pose["identity"]
+            if monitor is not None:
+                monitor.observe(pose)
 
         def on_prediction(record: Mapping[str, Any]) -> None:
             prediction = _validated(Prediction, record)
@@ -146,12 +156,15 @@ class JobRunner:
                     "incident_id": secrets.token_urlsafe(8),
                     "job_id": job_id,
                     "track_id": prediction["track_id"],
+                    "identity": names.get(prediction["track_id"]),
                     "detected_at_seconds": prediction["timestamp_seconds"],
                     "confidence": prediction["fall_probability"],
                     "status": "detected",
                     "created_at_utc": utc_now(),
                 }
                 incidents.append(incident)
+                if monitor is not None:
+                    monitor.note_fall(prediction["track_id"], prediction["timestamp_seconds"])
 
         def on_progress(value: float | None) -> None:
             if cancel_event.is_set():
@@ -212,10 +225,16 @@ class JobRunner:
                 self.store.transition(job_id, ("running",), state="cancelled", progress=None)
                 return
 
+        behaviour_events = []
+        if monitor is not None:
+            monitor.finish()
+            created = utc_now()
+            behaviour_events = [{**event, "source_kind": "upload", "source_id": job_id, "created_at_utc": created}
+                                for event in monitor.events]
         try:
             result = build_result(
                 job_id, summary, self.engine.model_version,
-                predictions, poses, incidents, monotonic() - started,
+                predictions, poses, incidents, monotonic() - started, behaviour_events,
             )
         except (KeyError, TypeError, ValueError):
             self._drop_clips(job_id)
@@ -238,11 +257,14 @@ class JobRunner:
                     room, Path(job["media_path"]), [pose["timestamp_seconds"] for pose in poses])
             except Exception:  # noqa: BLE001 - the finished job must not fail because of this
                 log.exception("Could not update the danger zone of room %s", room)
+        for event in result["behaviour_events"]:
+            self.store.save_behaviour_event(job["owner"], event)
         if not self.store.transition(
             job_id, ("running",), state="completed", progress=1.0,
             model_version=self.engine.model_version,
         ):
             self.store.clear_incidents(job_id)  # cancelled during the final write
+            self.store.delete_behaviour_events(job_id)
             self._drop_clips(job_id)
             if self.clips is not None and self.clips.zones is not None and room:
                 for incident in incidents:  # only completed jobs feed the room's danger zone

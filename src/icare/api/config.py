@@ -39,6 +39,11 @@ class Settings:
     clip_pre_seconds: float = 4.0   # before the detection: the model's own 4 s window, so the fall is inside
     clip_post_seconds: float = 1.0  # after it; pre + post is the ~5 s clip
     max_clips_per_job: int = 10
+    # Unusual-behaviour events (icare.inference.behaviour); experimental thresholds.
+    behaviour_enabled: bool = True
+    inactivity_seconds: float = 120.0
+    long_lie_seconds: float = 60.0
+    pacing_turns: int = 4
 
     def __post_init__(self) -> None:
         for name in ('max_upload_bytes', 'max_upload_seconds', 'max_queued_jobs',
@@ -47,7 +52,7 @@ class Settings:
                      'max_jobs_per_ip_window', 'admission_window_seconds', 'max_storage_bytes',
                      'result_reserve_bytes', 'fall_confirmations', 'max_clip_storage_bytes',
                      'clip_retention_seconds', 'clip_pre_seconds', 'clip_post_seconds',
-                     'max_clips_per_job'):
+                     'max_clips_per_job', 'inactivity_seconds', 'long_lie_seconds', 'pacing_turns'):
             value = getattr(self, name)
             if not math.isfinite(value) or value <= 0:
                 raise ValueError(f'{name} must be positive and finite')
@@ -81,4 +86,18 @@ class Settings:
             clip_pre_seconds=float(env.get('ICARE_CLIP_PRE_SECONDS', 4)),
             clip_post_seconds=float(env.get('ICARE_CLIP_POST_SECONDS', 1)),
             max_clips_per_job=int(env.get('ICARE_MAX_CLIPS_PER_JOB', 10)),
+            behaviour_enabled=env.get('ICARE_BEHAVIOUR_EVENTS', '1') != '0',
+            inactivity_seconds=float(env.get('ICARE_INACTIVITY_SECONDS', 120)),
+            long_lie_seconds=float(env.get('ICARE_LONG_LIE_SECONDS', 60)),
+            pacing_turns=int(env.get('ICARE_PACING_TURNS', 4)),
         )
+
+    def behaviour_monitor(self):
+        """A fresh per-source monitor, or None when behaviour events are disabled."""
+        if not self.behaviour_enabled:
+            return None
+        import secrets
+        from icare.inference.behaviour import BehaviourMonitor, BehaviourSettings
+        return BehaviourMonitor(BehaviourSettings(
+            inactivity_seconds=self.inactivity_seconds, long_lie_seconds=self.long_lie_seconds,
+            pacing_reversals=self.pacing_turns), new_id=lambda: secrets.token_urlsafe(8))

@@ -17,6 +17,8 @@ The public website is a static preview. Run locally for camera and video inferen
 - **Video analysis:** MP4 uploads, progress/cancellation, synchronized playback, and JSON/CSV reports.
 - **Dashboard:** responsive layout, light/dark themes, and keyboard-accessible mode selection.
 - **Multiple people:** every person tracked with their own ID, pose window and fall alerts.
+- **Unusual behaviour:** per-person alerts for repeated pacing, no movement for a long time, and not getting up after a fall.
+- **Named residents (optional):** consented face enrolment so alerts show who it is.
 - **Fall clips:** a ~5 second video with its timestamps and a picture of where the fall began, in a 1 GB store that expires after 24 hours.
 - **Danger zones:** pick the room a fixed camera watches, and each fall's position is added to that room's map, so caretakers can spot bumps or other hazards.
 - **Backend:** isolated model execution, bounded queues, session-scoped results, and duplicate-alert suppression.
@@ -71,7 +73,9 @@ stalling the stream. `ICARE_FALL_CONFIRMATIONS=2` requires two consecutive high
 predictions per person before an incident (default 1, the baseline rule).
 
 ICare does not label postures such as sitting, bending or lying: PoseC3D outputs
-only P(Fall), and posture rules would need labelled data to validate. Per person,
+only P(Fall), and posture rules would need labelled data to validate. (The only
+posture check is the torso angle that decides whether someone got up after a
+recorded fall; see [Unusual behaviour](#unusual-behaviour).) Per person,
 the reported states are warming up (fewer than six poses spanning 2 s), monitoring,
 and fall recorded (until re-armed).
 
@@ -108,6 +112,78 @@ replay because no footage exists for them.
 - **Format:** H.264 MP4, or VP8 WebM if this OpenCV build cannot encode H.264. If neither
   is available the clip is reported as not saved rather than served in a format
   browsers cannot play. A live clip's frame rate is the rate frames were actually analyzed.
+
+## Unusual behaviour
+
+Alongside falls, every tracked person is watched for three behaviours that matter
+in elderly care. Each is defined only by observable body movement, gives one event
+with a start, alert time, end and the measurements that met the rule, and is stored
+with the job or camera session (`behaviour_events` in results and live frames,
+`GET /api/v1/behaviour/events` for this browser's latest).
+
+| Event | Fires when | Does not fire for |
+| --- | --- | --- |
+| **Repeated pacing** (attention) | 4 back-and-forth turns within 90 s, each after walking at least 1.2 body lengths along the image's horizontal axis | walking through, going somewhere and back, swaying or stepping in place |
+| **No movement** (attention) | a clearly visible person's joints all stay within 0.05 body lengths (robust 10–90 % range over every 3 s) for 120 s | natural standing sway (0.04–0.10 measured on real clips), any movement lasting 0.5 s, poor visibility |
+| **Not up after fall** (urgent) | 60 s after a recorded fall, the person has not sat or stood up and was seen lying (torso > 55° from vertical) for at least half of that time | getting up or sitting up, resting upright in a chair after a fall alert |
+
+A person with too few confident joints is "not clearly visible": pacing pauses and
+the stillness clock restarts, so poor visibility never becomes an alert. A gap of
+more than 1 s restarts motion evidence; a person unseen for 2 s ends their open
+events (`end_reason: person_lost`). Lying still after a fall is reported as a long
+lie, not also as no movement. Pacing is measured along the image's horizontal axis,
+so walking straight towards or away from the camera is not counted, and the whole
+path must stay in view.
+
+Thresholds are experimental settings until validated on labelled recordings
+(`ICARE_INACTIVITY_SECONDS`, `ICARE_LONG_LIE_SECONDS`, `ICARE_PACING_TURNS`,
+`ICARE_BEHAVIOUR_EVENTS=0` disables them; see [.env.example](.env.example)).
+Shorter values make a live demonstration practical. The rules are in
+[`behaviour.py`](src/icare/inference/behaviour.py); they read pose records only (median 0.08 ms, at most
+about 1 ms per pose on a laptop CPU).
+
+`python -m icare.evaluation.behaviour_eval` runs the real models and scores the
+events. Real recordings of pacing, long stillness or long lies were not available,
+so positives are assembled from real footage (a walker's track played forwards and
+backwards, a motionless person looped, a real fall followed by its last frame held);
+negatives are unmodified videos. With the default thresholds, all 3 positives were
+detected (pacing alerted 19.8 s after the first walk began; the other two exactly at
+their thresholds) and the same footage shortened below each threshold raised nothing.
+Across 221 unmodified negative videos (14.7 minutes: the 12 multi-person composites,
+the two development clips and 207 Fall Video Dataset clips, falls and ordinary
+activities, mostly 2–7 s long) no behaviour event fired. With shorter demonstration thresholds (30 s, 20 s, 3 turns)
+all 3 positives were again detected and one negative video raised one event: a long
+lie in a composite whose fallen person stays lying for its last 24 s, which that
+rule should report.
+These test the rules on real pose estimates, not accuracy on care-home residents.
+The existing fall model also raised falls on the reversed walking footage; this
+shows it was not trained for such motion, and is one reason "not up after a fall"
+requires the person to be seen lying.
+
+## Named residents (optional)
+
+People are anonymous ("Person 1") unless a resident has been enrolled. In the care
+portal, **Residents** takes a name, an optional room and 1–5 photos of someone who
+has agreed to it. Only face measurements (OpenCV YuNet detector + SFace recogniser,
+128 numbers per photo) are kept, in `faces.json` in the API data folder; the photos
+are discarded. During analysis, each unnamed tracked person's face region is checked
+about once a second. A name is given only after two consecutive matches above a
+cosine similarity of 0.40, and never to two people in view at once. Once named, a
+track keeps the name. People whose face is not visible stay "Person N". Names appear
+on skeletons, people lists, fall incidents and behaviour alerts. New enrolments apply
+to the next camera session or video. Identity does not carry across cameras or
+across a lost track: a person who leaves view is named again when their face is
+next seen.
+
+On one 47 s handheld recording, the enrolled person scored 0.53–0.88 against two
+phone photos and was named 1.0 s in. Other people passing through scored 0.04–0.10,
+and none of the 22 other tracks was named. This is one recording, not an accuracy
+measurement.
+
+The model files (`models/face_detection_yunet_2023mar.onnx`,
+`models/face_recognition_sface_2021dec.onnx`) come from the
+[OpenCV model zoo](https://github.com/opencv/opencv_zoo) (Apache-2.0). Without them,
+or with no one enrolled, nobody is named and nothing else changes.
 
 ## Danger zones
 
