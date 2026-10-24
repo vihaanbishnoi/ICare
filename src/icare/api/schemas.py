@@ -185,12 +185,39 @@ class DailyLogsResponse(BaseModel):
     logs: list[DailyLogEntry]
 
 
+class IncidentStats(BaseModel):
+    total_events: int = 0
+    confirmed_falls: int = 0
+    near_falls: int = 0
+    avg_response_time_seconds: float = 0.0
+
+
+class HighRiskResident(BaseModel):
+    resident_name: str
+    room: str
+    wing: str
+    risk_level: str
+    incident_summary: str
+    action_plan: str
+
+
+class DailySummaryStructured(BaseModel):
+    executive_summary: str
+    incident_stats: IncidentStats
+    high_risk_residents: list[HighRiskResident] = []
+    key_observations: list[str] = []
+    shift_handoff_recommendations: list[str] = []
+    shift_handoff_notes: str = ""
+
+
 class DailySummaryResponse(BaseModel):
     status: Literal['success', 'fallback', 'empty']
     model: str
     summary: str
+    structured_summary: DailySummaryStructured | None = None
     log_count: int
     generated_at_utc: str
     ollama_connected: bool
     notice: str | None = None
+
 

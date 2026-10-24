@@ -424,8 +424,18 @@ function Reports({ falls: todayFalls, residents }: { falls: FallEvent[]; residen
   }
 
   function copySummary() {
-    if (!summary?.summary) return;
-    navigator.clipboard.writeText(summary.summary);
+    if (!summary) return;
+    let text = summary.summary;
+    if (summary.structured_summary) {
+      const s = summary.structured_summary;
+      text = `Daily Fall Monitoring Report (${summary.model})\n\n` +
+        `Executive Summary:\n${s.executive_summary}\n\n` +
+        `Stats:\n- Total Events: ${s.incident_stats.total_events}\n- Confirmed Falls: ${s.incident_stats.confirmed_falls}\n- Near Falls: ${s.incident_stats.near_falls}\n- Avg Response: ${s.incident_stats.avg_response_time_seconds}s\n\n` +
+        `High-Risk Residents:\n` + s.high_risk_residents.map(r => `- ${r.resident_name} (Room ${r.room}, ${r.wing}) [${r.risk_level}]: ${r.incident_summary} -> ${r.action_plan}`).join('\n') +
+        `\n\nShift Recommendations:\n` + s.shift_handoff_recommendations.map(r => `- ${r}`).join('\n') +
+        `\n\nShift Handoff Notes:\n${s.shift_handoff_notes}`;
+    }
+    navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -489,22 +499,72 @@ function Reports({ falls: todayFalls, residents }: { falls: FallEvent[]; residen
 
       {summary.notice && <div className="p-ai-notice"><Icon name="alert" size={14} /><span>{summary.notice}</span></div>}
 
-      <div className="p-summary-body">
+      {summary.structured_summary ? <div className="p-summary-structured">
+        <div className="p-exec-summary-box">
+          <strong>Executive Summary</strong>
+          <p>{summary.structured_summary.executive_summary}</p>
+        </div>
+
+        <div className="p-summary-kpis">
+          <div className="p-summary-kpi">
+            <span>Events Logged</span>
+            <strong>{summary.structured_summary.incident_stats.total_events}</strong>
+          </div>
+          <div className="p-summary-kpi" data-tone={summary.structured_summary.incident_stats.confirmed_falls > 0 ? 'bad' : 'info'}>
+            <span>Confirmed Falls</span>
+            <strong>{summary.structured_summary.incident_stats.confirmed_falls}</strong>
+          </div>
+          <div className="p-summary-kpi" data-tone={summary.structured_summary.incident_stats.near_falls > 0 ? 'warn' : 'info'}>
+            <span>Near Falls / Slips</span>
+            <strong>{summary.structured_summary.incident_stats.near_falls}</strong>
+          </div>
+          <div className="p-summary-kpi" data-tone="info">
+            <span>Avg Response Time</span>
+            <strong>{summary.structured_summary.incident_stats.avg_response_time_seconds}s</strong>
+          </div>
+        </div>
+
+        {summary.structured_summary.high_risk_residents?.length > 0 && <div className="p-summary-block">
+          <div className="p-summary-block__title"><Icon name="alert" size={15} />High-Risk Residents & Required Actions</div>
+          <div className="p-risk-grid">
+            {summary.structured_summary.high_risk_residents.map((r, idx) => (
+              <div key={idx} className="p-risk-card">
+                <div className="p-risk-card__header">
+                  <span><strong>{r.resident_name}</strong> · Room {r.room} ({r.wing} Wing)</span>
+                  <span className="p-badge" data-tone={r.risk_level?.toLowerCase().includes('high') ? 'bad' : r.risk_level?.toLowerCase().includes('med') ? 'warn' : 'good'}>{r.risk_level} Risk</span>
+                </div>
+                <div className="p-risk-card__desc">{r.incident_summary}</div>
+                <div className="p-risk-card__action"><strong>Action Plan:</strong> {r.action_plan}</div>
+              </div>
+            ))}
+          </div>
+        </div>}
+
+        <div className="p-grid p-grid--2">
+          {summary.structured_summary.key_observations?.length > 0 && <div className="p-summary-block">
+            <div className="p-summary-block__title"><Icon name="bolt" size={15} />Key Clinical Observations</div>
+            <ul className="p-summary-bullets">
+              {summary.structured_summary.key_observations.map((obs, idx) => <li key={idx}>{obs}</li>)}
+            </ul>
+          </div>}
+
+          {summary.structured_summary.shift_handoff_recommendations?.length > 0 && <div className="p-summary-block">
+            <div className="p-summary-block__title"><Icon name="check" size={15} />Shift Handoff Recommendations</div>
+            <ul className="p-summary-bullets">
+              {summary.structured_summary.shift_handoff_recommendations.map((rec, idx) => <li key={idx}>{rec}</li>)}
+            </ul>
+          </div>}
+        </div>
+
+        {summary.structured_summary.shift_handoff_notes && <div className="p-handoff-callout">
+          <strong>Shift Handoff Priority Notes</strong>
+          <p>{summary.structured_summary.shift_handoff_notes}</p>
+        </div>}
+      </div> : <div className="p-summary-body">
         {summary.summary.split('\n\n').map((paragraph, idx) => {
           const trimmed = paragraph.trim();
           if (trimmed.startsWith('### ') || trimmed.startsWith('## ') || (trimmed.startsWith('**') && trimmed.endsWith('**') && !trimmed.includes('\n'))) {
             return <h3 key={idx} className="p-summary-heading">{trimmed.replace(/^[#*]+\s*|\*\*$/g, '')}</h3>;
-          }
-          if (trimmed.includes('\n|') || trimmed.startsWith('|')) {
-            const lines = trimmed.split('\n').filter(l => l.trim().startsWith('|'));
-            const headerCols = lines[0]?.split('|').map(c => c.trim()).filter(Boolean) || [];
-            const dataRows = lines.slice(2).map(l => l.split('|').map(c => c.trim()).filter(Boolean));
-            return <div key={idx} className="p-table-wrap p-summary-table">
-              <table className="p-table p-table--compact">
-                <thead><tr>{headerCols.map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
-                <tbody>{dataRows.map((row, rIdx) => <tr key={rIdx}>{row.map((col, cIdx) => <td key={cIdx}>{col}</td>)}</tr>)}</tbody>
-              </table>
-            </div>;
           }
           if (trimmed.startsWith('* ') || trimmed.startsWith('- ') || /^\d+\.\s/.test(trimmed)) {
             const items = trimmed.split('\n').filter(l => l.trim());
@@ -514,7 +574,7 @@ function Reports({ falls: todayFalls, residents }: { falls: FallEvent[]; residen
           }
           return <p key={idx} className="p-summary-para">{trimmed}</p>;
         })}
-      </div>
+      </div>}
 
       {showLogs && <div className="p-logs-preview">
         <div className="p-logs-header">
