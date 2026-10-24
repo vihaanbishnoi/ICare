@@ -227,21 +227,28 @@ function Overview({ falls, residents, now, onClip, onAttend, onGo, onNotify }: {
         </div>
       </header>
       <ul className="p-alerts p-alerts--scroll">
-        {alertList.map(f => <li key={f.id} data-open={!f.acknowledgedAt ? 'true' : undefined}>
-          <span className="p-alerts__room"><small>Room</small><strong>{f.room}</strong></span>
-          <div className="p-alerts__who"><strong>{name(f.residentId)}</strong>
-            <small>{wingLabel(f.wing)} · {clock(f.at)} · {ago(f.at, now)}</small>
-            <span className="p-alerts__bar" aria-label={`${Math.round(f.confidence * 100)}% confidence`}><i style={{ width: `${Math.round(f.confidence * 100)}%` }} /></span>
+        {alertList.map(f => { const pct = Math.round(f.confidence * 100); const det = f.residentId === DETECTOR_ID;
+          return <li key={f.id} data-open={!f.acknowledgedAt ? 'true' : undefined}>
+          <span className="p-alerts__room" aria-hidden={det ? 'true' : undefined}>
+            {det ? <><Icon name="cctv" size={18} /><small>CCTV</small></> : <><small>Room</small><strong>{f.room}</strong></>}
+          </span>
+          <div className="p-alerts__who">
+            <strong>{det ? 'CCTV camera' : name(f.residentId)}</strong>
+            <small>{det ? 'Live detector' : wingLabel(f.wing)} · {clock(f.at)}</small>
           </div>
-          <span className="p-alerts__state">{f.acknowledgedAt ? `Attended · ${duration(responseSeconds(f)!)}` : 'Waiting'}</span>
-          <span className="p-alerts__conf num">{Math.round(f.confidence * 100)}%</span>
+          <div className="p-alerts__meta">
+            {f.acknowledgedAt
+              ? <span className="p-badge" data-tone="good"><Icon name="check" size={12} />Attended in {duration(responseSeconds(f)!)}</span>
+              : <span className="p-badge" data-tone="bad"><Icon name="clock" size={12} />Waiting {ago(f.at, now).replace(' ago', '')}</span>}
+            <span className="p-alerts__conf" title="Model confidence"><i><b style={{ width: `${pct}%` }} /></i><span className="num">{pct}%</span></span>
+          </div>
           <div className="p-alerts__actions">
-            <button type="button" className="p-btn p-btn--sm" onClick={() => onClip(f)} aria-label={`Play clip, room ${f.room}`}><Icon name="play" size={14} />Clip</button>
+            <button type="button" className="p-btn p-btn--sm" onClick={() => onClip(f)} aria-label={`Play 5 second clip, ${det ? 'CCTV' : `room ${f.room}`}`}><Icon name="play" size={14} />Clip</button>
             {!f.acknowledgedAt
               ? <button type="button" className="p-btn p-btn--primary p-btn--sm" onClick={() => onAttend(f)}>Respond</button>
-              : f.residentId !== DETECTOR_ID && <button type="button" className="p-btn p-btn--sm" onClick={() => onNotify(f.residentId)}>Notify</button>}
+              : !det && <button type="button" className="p-btn p-btn--sm" onClick={() => onNotify(f.residentId)}>Notify</button>}
           </div>
-        </li>)}
+        </li>; })}
         {!alertList.length && <li className="p-empty p-empty--inline"><Icon name="check" />{alertTab === 'open' ? 'No open alerts. Everyone is safe.' : 'No falls today.'}</li>}
       </ul>
     </section>
