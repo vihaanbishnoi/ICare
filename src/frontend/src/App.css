@@ -248,6 +248,14 @@ canvas.stage__media { display: block; width: 100%; height: auto; max-height: 70v
 .trace__incident { stroke: var(--alert); stroke-width: 1.5; }
 .trace__incident-label { fill: var(--alert); font: 700 11px var(--sans); }
 .trace__playhead { stroke: var(--ink-2); stroke-width: 1.25; }
+.trace__legend { display: flex; flex-wrap: wrap; gap: 4px 16px; list-style: none; padding: 6px 0 2px; font-size: 0.8125rem; color: var(--ink-2); }
+.trace__legend li { display: inline-flex; align-items: center; gap: 6px; }
+.trace__legend span { width: 14px; height: 3px; border-radius: 2px; }
+.person-dot { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; vertical-align: 1px; }
+.people { list-style: none; padding: 0; display: flex; flex-direction: column; }
+.people li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 0.875rem; }
+.people li:last-child { border-bottom: 0; }
+.people li[data-alert='true'] .num { color: var(--alert); font-weight: 700; }
 
 /* Public site ---------------------------------------------------------------- */
 .page--site { display: flex; flex-direction: column; align-items: center; padding-top: 0; }

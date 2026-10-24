@@ -21,8 +21,12 @@ export interface Job {
   error: ErrorDetail | null;
 }
 
+/** Per-source person ID from the tracker; null in results stored before tracking. */
+export type TrackId = number | null | undefined;
+
 /** Prediction from engine — timestamp_seconds, fall_probability in [0,1] */
 export interface Prediction {
+  track_id?: TrackId;
   timestamp_seconds: number;
   fall_probability: number;
   window_start_seconds?: number | null;
@@ -34,6 +38,7 @@ export interface Prediction {
 
 /** 17 COCO keypoints [x, y, confidence]. Coordinates relative to frame_width/frame_height. */
 export interface Pose {
+  track_id?: TrackId;
   timestamp_seconds: number;
   bbox_xyxy: [number, number, number, number];
   keypoints: [number, number, number][];  // 17 entries
@@ -42,6 +47,7 @@ export interface Pose {
 export interface Incident {
   incident_id: string;
   job_id: string;
+  track_id?: TrackId;
   detected_at_seconds: number;
   confidence: number;
   status: 'detected' | 'acknowledged';
@@ -64,7 +70,7 @@ export interface Result {
 }
 
 export interface LiveIncident {
-  incident_id: string; session_id: string; detected_at_seconds: number;
+  incident_id: string; session_id: string; track_id?: TrackId; detected_at_seconds: number;
   confidence: number; created_at_utc: string;
 }
 
@@ -77,10 +83,17 @@ export interface LiveHistory extends LiveSession {
   ended_at_utc: string | null; error_message: string | null; incidents: LiveIncident[];
 }
 
+/** One tracked person in an analyzed camera frame, with independent temporal state. */
+export interface LivePerson {
+  track_id: number; pose: Pose; prediction: Prediction | null;
+  status: 'warming_up' | 'monitoring'; coverage_seconds: number; pose_count: number;
+  incident_latched: boolean;
+}
+
 export interface LiveFrame {
   session_id: string; model_version: string; timestamp_seconds: number;
-  frame_width: number; frame_height: number; pose: Pose | null; prediction: Prediction | null;
-  status: 'no_person' | 'warming_up' | 'monitoring'; coverage_seconds: number; pose_count: number;
+  frame_width: number; frame_height: number; people: LivePerson[];
+  status: 'no_person' | 'warming_up' | 'monitoring';
   track_resets: number; frames_processed: number; processed_fps: number; processing_ms: number;
-  incident: LiveIncident | null; incident_latched: boolean;
+  incidents: LiveIncident[]; incident_latched: boolean;
 }

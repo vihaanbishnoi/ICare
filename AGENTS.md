@@ -17,9 +17,10 @@ Treat the fall detector as the existing research baseline. Review literature and
 measured evidence before choosing a new model, adaptive processing or extra events.
 Keep application code under src/, with optional experiments in icare/evaluation.
 
-Run python -m icare.tools.check_repository. For frontend changes, run npm run build,
-npm run build:static and npm run lint. This local inference demo has no automated
-test suite. Do not add invented examples or model evidence.
+Run python -m icare.tools.check_repository and python -m unittest discover -s tests -t .
+For frontend changes, run npm run build, npm run build:static and npm run lint.
+Synthetic test scenes check tracking and event plumbing, not fall accuracy. Do not
+add invented examples or model evidence.
 
 Keep secrets, private videos, datasets, caches and generated outputs out of Git.
 Historical metrics are group-aware, not verified subject-independent. Do not

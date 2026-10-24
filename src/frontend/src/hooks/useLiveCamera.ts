@@ -94,14 +94,18 @@ export function useLiveCamera() {
             const context = canvas.getContext('2d');
             if (context) {
               context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-              drawPose(context, result.pose, 1, 1, result.incident_latched);
+              for (const person of result.people) {
+                drawPose(context, person.pose, 1, 1, person.incident_latched, person.prediction?.fall_probability ?? null);
+              }
             }
           }
         } finally { bitmap.close(); }
         if (!current()) return;
         setFrame(result); setRoundTrip(performance.now() - captured);
-        if (result.prediction) setPredictions(previous => [...previous, result.prediction!].slice(-120));
-        if (result.incident) setIncidents(previous => [...previous, result.incident!]);
+        const fresh = result.people.flatMap(person => person.prediction ? [person.prediction] : []);
+        // Keep about the same history per person as before: 120 predictions each.
+        if (fresh.length) setPredictions(previous => [...previous, ...fresh].slice(-120 * Math.max(1, result.people.length)));
+        if (result.incidents.length) setIncidents(previous => [...previous, ...result.incidents]);
       }
     } catch (e) {
       if (current()) { setError(cameraError(e)); await stop(); }

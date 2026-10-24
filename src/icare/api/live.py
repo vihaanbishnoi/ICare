@@ -9,7 +9,7 @@ import secrets
 import threading
 import time
 
-from icare.api.incidents import IncidentTracker
+from icare.api.incidents import PersonIncidents
 from icare.api.schemas import Pose, Prediction
 from icare.api.store import utc_now
 
@@ -43,7 +43,8 @@ class LiveManager:
             cutoff = (datetime.now(timezone.utc) - timedelta(seconds=self.settings.admission_window_seconds)).isoformat()
             if not self.store.create_live_session(document, cutoff, self.settings.max_jobs_per_visitor_window):
                 raise LiveError(429, 'capacity', 'Too many camera sessions. Please try again later.')
-            session = {**document, 'cancel': threading.Event(), 'tracker': IncidentTracker(),
+            session = {**document, 'cancel': threading.Event(),
+                       'incidents': PersonIncidents(confirmations=self.settings.fall_confirmations),
                        'started': time.monotonic(), 'last_activity': time.monotonic(),
                        'last_timestamp': None, 'frames': 0, 'inflight': False, 'closing': False,
                        'idle': threading.Event()}
@@ -96,26 +97,34 @@ class LiveManager:
                 if self.session is not session or session['cancel'].is_set():
                     raise LiveError(409, 'session_closed', 'The camera session stopped.')
             record = self.engine.process_frame(data, timestamp, cancel_event=session['cancel'], timeout_seconds=30)
-            pose = Pose.model_validate(record['pose']).model_dump() if record['pose'] is not None else None
-            prediction = Prediction.model_validate(record['prediction']).model_dump() if record['prediction'] is not None else None
+            poses = {pose['track_id']: Pose.model_validate(pose).model_dump() for pose in record['poses']}
+            predictions = {item['track_id']: Prediction.model_validate(item).model_dump() for item in record['predictions']}
             with self.lock:
                 if self.session is not session or session['cancel'].is_set():
                     raise LiveError(409, 'session_closed', 'The camera session stopped.')
-                incident = None
-                if prediction is not None and session['tracker'].observe(prediction['fall_probability']):
-                    incident = {'incident_id': secrets.token_urlsafe(8), 'session_id': session['session_id'],
-                                'detected_at_seconds': prediction['timestamp_seconds'],
-                                'confidence': prediction['fall_probability'], 'created_at_utc': utc_now()}
-                    self.store.add_live_incident(incident)
+                incidents, people = [], []
+                for person in record['people']:
+                    track_id = person['track_id']
+                    prediction = predictions.get(track_id)
+                    if prediction is not None and session['incidents'].observe(track_id, prediction['fall_probability']):
+                        incident = {'incident_id': secrets.token_urlsafe(8), 'session_id': session['session_id'],
+                                    'track_id': track_id, 'detected_at_seconds': prediction['timestamp_seconds'],
+                                    'confidence': prediction['fall_probability'], 'created_at_utc': utc_now()}
+                        self.store.add_live_incident(incident)
+                        incidents.append(incident)
+                    people.append({**person, 'pose': poses[track_id], 'prediction': prediction,
+                                   'incident_latched': session['incidents'].latched(track_id)})
                 session['frames'] += 1
                 session['last_timestamp'] = timestamp
                 session['last_activity'] = time.monotonic()
                 wall = max(time.monotonic() - session['started'], 1e-6)
-                return {**record, 'pose': pose, 'prediction': prediction, 'incident': incident,
+                return {'timestamp_seconds': record['timestamp_seconds'], 'frame_width': record['frame_width'],
+                        'frame_height': record['frame_height'], 'status': record['status'],
+                        'track_resets': record['track_resets'], 'people': people, 'incidents': incidents,
                         'session_id': session['session_id'], 'model_version': self.engine.model_version,
                         'frames_processed': session['frames'], 'processed_fps': session['frames'] / wall,
                         'processing_ms': (time.monotonic() - started) * 1000,
-                        'incident_latched': not session['tracker'].armed}
+                        'incident_latched': session['incidents'].any_latched()}
         except LiveError:
             raise
         except Exception as error:

@@ -13,6 +13,9 @@ import numpy as np
 
 DEFAULT_POSE_MODEL = Path(__file__).resolve().parents[3] / "models" / "yolo26n-pose.onnx"
 INPUT_SIZE = 640
+# The NMS-free head can still emit two near-identical boxes for one person; boxes
+# overlapping this much are the same detection (Ultralytics' default NMS IoU).
+DUPLICATE_IOU = 0.7
 
 
 @dataclass(frozen=True)
@@ -27,11 +30,12 @@ class PoseFrame:
 
 
 class YOLOPoseExtractor:
-    """A fixed, NMS-free YOLO26n-pose ONNX export; largest visible person wins.
+    """A fixed, NMS-free YOLO26n-pose ONNX export returning every visible person.
 
-    The model returns boxes and joints together for every sampled frame. There
-    are no cached boxes or per-clip tracking state. Models are loaded locally;
-    inference never downloads weights or imports PyTorch/Ultralytics.
+    The model returns boxes and joints together for every sampled frame. It holds
+    no per-clip state: identity across frames is assigned by the engine's tracker.
+    Models are loaded locally; inference never downloads weights or imports
+    PyTorch/Ultralytics.
     """
 
     def __init__(self, model_path: Path = DEFAULT_POSE_MODEL, device: str = "cpu",
@@ -76,7 +80,12 @@ class YOLOPoseExtractor:
             raise ValueError("YOLO26n-pose returned invalid detection confidence")
         return rows
 
-    def extract(self, frame_rgb: np.ndarray, timestamp_seconds: float) -> PoseFrame | None:
+    def extract_all(self, frame_rgb: np.ndarray, timestamp_seconds: float) -> list[PoseFrame]:
+        """Every person above the detection threshold, largest first, in frame pixels.
+
+        One model pass serves all people. Near-identical duplicate boxes are merged
+        into the larger one, so a single person is never reported twice.
+        """
         started = perf_counter()
         height, width = frame_rgb.shape[:2]
         if frame_rgb.ndim != 3 or frame_rgb.shape[2] != 3 or min(height, width) < 1:
@@ -85,7 +94,7 @@ class YOLOPoseExtractor:
         rows = self._predict(tensor)
         rows = rows[(rows[:, 4] >= self.detection_threshold) & (rows[:, 5] == 0)]
         if not len(rows):
-            return None
+            return []
 
         # Undo square padding and resize, so both boxes and joints use frame pixels.
         boxes = (rows[:, :4] - np.array([left, top, left, top])) / scale
@@ -94,20 +103,43 @@ class YOLOPoseExtractor:
         areas = np.maximum(0, boxes[:, 2] - boxes[:, 0]) * np.maximum(0, boxes[:, 3] - boxes[:, 1])
         visible = areas > 0
         rows, boxes, areas = rows[visible], boxes[visible], areas[visible]
-        if not len(rows):
-            return None
-        primary = int(np.argmax(areas))
-        keypoints = rows[primary, 6:].reshape(17, 3).copy()
-        if np.any((keypoints[:, 2] < 0) | (keypoints[:, 2] > 1)):
+        keypoints = rows[:, 6:].reshape(-1, 17, 3).copy()
+        if np.any((keypoints[..., 2] < 0) | (keypoints[..., 2] > 1)):
             raise ValueError("YOLO26n-pose returned invalid keypoint confidence")
-        keypoints[:, 0] = ((keypoints[:, 0] - left) / scale).clip(0, width)
-        keypoints[:, 1] = ((keypoints[:, 1] - top) / scale).clip(0, height)
-        return PoseFrame(
-            timestamp_seconds=float(timestamp_seconds), keypoints=keypoints,
-            bbox=boxes[primary].astype(np.float32), detected_people=len(rows),
-            frame_width=width, frame_height=height,
-            inference_ms=(perf_counter() - started) * 1000,
-        )
+        keypoints[..., 0] = ((keypoints[..., 0] - left) / scale).clip(0, width)
+        keypoints[..., 1] = ((keypoints[..., 1] - top) / scale).clip(0, height)
+        elapsed = (perf_counter() - started) * 1000
+        order = _without_duplicates(boxes, np.argsort(-areas, kind="stable"))
+        return [PoseFrame(
+            timestamp_seconds=float(timestamp_seconds), keypoints=keypoints[i],
+            bbox=boxes[i].astype(np.float32), detected_people=len(order),
+            frame_width=width, frame_height=height, inference_ms=elapsed,
+        ) for i in order]
+
+    def extract(self, frame_rgb: np.ndarray, timestamp_seconds: float) -> PoseFrame | None:
+        """The largest visible person only (single-person tools)."""
+        people = self.extract_all(frame_rgb, timestamp_seconds)
+        return people[0] if people else None
+
+
+def _without_duplicates(boxes: np.ndarray, order: np.ndarray) -> list[int]:
+    """Keep boxes in ``order`` unless one already kept overlaps them by DUPLICATE_IOU."""
+    kept: list[int] = []
+    for index in order:
+        box = boxes[index]
+        duplicate = False
+        for other in kept:
+            ref = boxes[other]
+            width = max(0.0, min(box[2], ref[2]) - max(box[0], ref[0]))
+            height = max(0.0, min(box[3], ref[3]) - max(box[1], ref[1]))
+            overlap = width * height
+            union = (box[2] - box[0]) * (box[3] - box[1]) + (ref[2] - ref[0]) * (ref[3] - ref[1]) - overlap
+            if union > 0 and overlap / union >= DUPLICATE_IOU:
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(int(index))
+    return kept
 
 
 def _letterbox(frame_rgb: np.ndarray) -> tuple[np.ndarray, float, int, int]:
