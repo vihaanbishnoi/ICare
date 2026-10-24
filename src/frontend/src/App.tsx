@@ -5,10 +5,11 @@ import { LivePanel } from './components/LivePanel';
 import { PublicSite } from './components/PublicSite';
 import { UploadPanel } from './components/UploadPanel';
 import { STATIC_DEMO } from './config';
+import { Portal } from './portal/Portal';
 
 const initialMode = (): Mode => (window.location.hash === '#video' ? 'video' : 'live');
 
-function LocalDashboard() {
+export function LocalDashboard() {
   const [mode, setMode] = useState<Mode>(initialMode);
   useEffect(() => {
     // Back/forward and edited URLs switch modes too.
@@ -41,5 +42,7 @@ function LocalDashboard() {
 }
 
 export default function App() {
-  return STATIC_DEMO ? <PublicSite /> : <LocalDashboard />;
+  // The care portal (family + manager sign-in) is the main app; the bare detector stays at #detector.
+  if (STATIC_DEMO) return <PublicSite />;
+  return window.location.hash.startsWith('#detector') ? <LocalDashboard /> : <Portal />;
 }
