@@ -5,14 +5,16 @@ import { LivePanel } from '../components/LivePanel';
 import { UploadPanel } from '../components/UploadPanel';
 import {
   acknowledgeFall, ago, ALL_ROOMS, bytesLabel, clock, dayStats, DETECTOR, DETECTOR_ID, duration, residentName,
-  responseSeconds, ROOMS, sendMessage, simulateFall, syncDetectorClips, useNow, useSimulation, useStore, wingLabel,
+  responseSeconds, ROOMS, sendMessage, syncDetectorClips, useNow, useSimulation, useStore, wingLabel,
   type FallEvent, type Resident, type Session,
 } from './data';
 import { useClipList } from '../hooks/useClips';
 import type { ClipList } from '../types';
 import { downloadCsv, printReport } from './report';
 import { FallClip, Icon, Initials, Logo, Modal, StatusPill } from './ui';
-import { BigAlert, DayStrip, ModelCard, Trend } from './extras';
+import { BigAlert, DayStrip, Trend } from './extras';
+import { CareMap } from './CareMap';
+import { ChatDock } from './ChatDock';
 import { dayLabel, fallsForDay, HISTORY_DAYS } from './data';
 import { useTheme } from '../lib/theme';
 import { fetchDailyLogs, fetchDailySummary } from '../api/client';
@@ -82,7 +84,7 @@ export function Manager({ session, onSignOut }: { session: Session; onSignOut: (
         </button>)}
         <p className="p-side__label">Tools</p>
         <button type="button" className="p-nav" aria-current={view === 'detection' ? 'page' : undefined} onClick={() => setView('detection')}>
-          <Icon name="camera" /><span>Camera detection</span>
+          <Icon name="cctv" /><span>CCTV</span>
         </button>
       </nav>
       <div className="p-side__foot">
@@ -124,7 +126,6 @@ export function Manager({ session, onSignOut }: { session: Session; onSignOut: (
               </button>)}
             </div>}
           </div>
-          <button type="button" className="p-btn" onClick={() => simulateFall()} title="Demo: create a simulated fall event"><Icon name="bolt" size={16} />Simulate fall</button>
           <button type="button" className="p-btn p-btn--primary" onClick={() => setNotify({ residentId: 'all' })}><Icon name="send" size={16} />Notify families</button>
         </div>
       </header>
@@ -140,6 +141,8 @@ export function Manager({ session, onSignOut }: { session: Session; onSignOut: (
         {view === 'detection' && <Detection />}
       </main>
     </div>
+
+    <ChatDock residents={store.residents} from={session.name} />
 
     {toasts[0] && !clip && !attend && (() => { const f = toasts[0]; return <BigAlert kicker="Fall detected"
       place={`Room ${f.room}`} detail={`${resident(f.residentId).name} · ${wingLabel(f.wing)}`}
@@ -203,6 +206,9 @@ function Overview({ falls, residents, now, onClip, onAttend, onGo, onNotify }: {
   const hours = s.byHour.slice(0, hourNow + 1);
   const attendedPct = s.total ? Math.round(((s.total - s.open) / s.total) * 100) : 100;
 
+  const [alertTab, setAlertTab] = useState<'open' | 'all'>('open');
+  const alertList = (alertTab === 'open' ? falls.filter(f => !f.acknowledgedAt) : falls).slice(0, 12);
+
   return <div className="p-grid">
     <section className="p-card">
       <header className="p-card__head"><span>Falls today</span><button type="button" className="p-btn p-btn--sm" onClick={() => onGo('reports')}>Report</button></header>
@@ -211,6 +217,34 @@ function Overview({ falls, residents, now, onClip, onAttend, onGo, onNotify }: {
       <ul className="p-list">
         {['East', 'West', 'Garden', DETECTOR.wing].map(w => { const n = falls.filter(f => f.wing === w).length;
           return <li key={w}><span><Icon name="room" size={16} />{wingLabel(w)}</span><b className="num">{n}</b><span className="p-muted">{s.total ? Math.round(n / s.total * 100) : 0}%</span></li>; })}
+      </ul>
+    </section>
+
+    <section className="p-card p-card--dark p-span-2 p-livealerts">
+      <header className="p-card__head">
+        <span><span className="p-live-dot p-live-dot--alert" />Live fall alerts</span>
+        <div className="p-seg p-seg--dark" role="tablist" aria-label="Alert filter">
+          <button type="button" role="tab" aria-selected={alertTab === 'open'} className="p-seg__item" data-on={alertTab === 'open' ? 'true' : undefined} onClick={() => setAlertTab('open')}>Open · {s.open}</button>
+          <button type="button" role="tab" aria-selected={alertTab === 'all'} className="p-seg__item" data-on={alertTab === 'all' ? 'true' : undefined} onClick={() => setAlertTab('all')}>All today · {s.total}</button>
+        </div>
+      </header>
+      <ul className="p-alerts p-alerts--scroll">
+        {alertList.map(f => <li key={f.id} data-open={!f.acknowledgedAt ? 'true' : undefined}>
+          <span className="p-alerts__room"><small>Room</small><strong>{f.room}</strong></span>
+          <div className="p-alerts__who"><strong>{name(f.residentId)}</strong>
+            <small>{wingLabel(f.wing)} · {clock(f.at)} · {ago(f.at, now)}</small>
+            <span className="p-alerts__bar" aria-label={`${Math.round(f.confidence * 100)}% confidence`}><i style={{ width: `${Math.round(f.confidence * 100)}%` }} /></span>
+          </div>
+          <span className="p-alerts__state">{f.acknowledgedAt ? `Attended · ${duration(responseSeconds(f)!)}` : 'Waiting'}</span>
+          <span className="p-alerts__conf num">{Math.round(f.confidence * 100)}%</span>
+          <div className="p-alerts__actions">
+            <button type="button" className="p-btn p-btn--glass p-btn--sm" onClick={() => onClip(f)} aria-label={`Play clip, room ${f.room}`}><Icon name="play" size={14} />Clip</button>
+            {!f.acknowledgedAt
+              ? <button type="button" className="p-btn p-btn--lime p-btn--sm" onClick={() => onAttend(f)}>Respond</button>
+              : f.residentId !== DETECTOR_ID && <button type="button" className="p-btn p-btn--glass p-btn--sm" onClick={() => onNotify(f.residentId)}>Notify</button>}
+          </div>
+        </li>)}
+        {!alertList.length && <li className="p-empty p-empty--dark"><Icon name="check" />{alertTab === 'open' ? 'No open alerts. Everyone is safe.' : 'No falls today.'}</li>}
       </ul>
     </section>
 
@@ -225,6 +259,15 @@ function Overview({ falls, residents, now, onClip, onAttend, onGo, onNotify }: {
     </section>
 
     <section className="p-card">
+      <header className="p-card__head"><span>Falls by room</span><button type="button" className="p-btn p-btn--sm" onClick={() => onGo('reports')}>Report</button></header>
+      <div className="p-kpi"><strong className="num">{s.byRoom.size}</strong><span className="p-muted">rooms with a fall</span></div>
+      <ul className="p-rooms">
+        {rooms.slice(0, 6).map(([room, n]) => <li key={room}><span>Room {room}</span><i><b style={{ width: `${(n / maxRoom) * 100}%` }} /></i><strong className="num">{n}</strong></li>)}
+        {!rooms.length && <li className="p-muted">No falls yet today.</li>}
+      </ul>
+    </section>
+
+    <section className="p-card">
       <header className="p-card__head"><span>Response time</span><button type="button" className="p-btn p-btn--sm" onClick={() => onGo('incidents')}>Details</button></header>
       <div className="p-kpi"><strong className="num">{s.avgResponse === null ? '–' : duration(s.avgResponse)}</strong><span className="p-badge" data-tone={(s.avgResponse ?? 0) <= 120 ? 'good' : 'bad'}>avg</span></div>
       <ul className="p-list p-list--plain">
@@ -235,48 +278,9 @@ function Overview({ falls, residents, now, onClip, onAttend, onGo, onNotify }: {
       <div className="p-meter" aria-label={`${attendedPct}% of alerts attended`}><i style={{ width: `${attendedPct}%` }} /></div>
     </section>
 
-    <section className="p-card p-card--dark p-span-2">
-      <header className="p-card__head"><span>Live fall alerts</span>
-        <span className="p-badge" data-tone={s.open ? 'bad' : 'good'}>{s.open} open</span>
-      </header>
-      <ul className="p-alerts">
-        {falls.slice(0, 5).map(f => <li key={f.id} data-open={!f.acknowledgedAt ? 'true' : undefined}>
-          <Initials name={name(f.residentId)} tone={Number(f.residentId.slice(1))} />
-          <div className="p-alerts__who"><strong>{name(f.residentId)}</strong><small>Room {f.room} · {f.wing} · {ago(f.at, now)}</small></div>
-          <span className="p-alerts__state">{f.acknowledgedAt ? `Attended · ${duration(responseSeconds(f)!)}` : 'Waiting'}</span>
-          <span className="p-alerts__conf num">{Math.round(f.confidence * 100)}%</span>
-          <div className="p-alerts__actions">
-            <button type="button" className="p-btn p-btn--glass p-btn--sm" onClick={() => onClip(f)}><Icon name="play" size={14} />Clip</button>
-            {!f.acknowledgedAt
-              ? <button type="button" className="p-btn p-btn--lime p-btn--sm" onClick={() => onAttend(f)}>Respond</button>
-              : f.residentId !== DETECTOR_ID && <button type="button" className="p-btn p-btn--glass p-btn--sm" onClick={() => onNotify(f.residentId)}>Notify family</button>}
-          </div>
-        </li>)}
-        {!falls.length && <li className="p-empty">No falls today.</li>}
-      </ul>
-    </section>
-
-    <section className="p-card">
-      <header className="p-card__head"><span>Falls by room</span><button type="button" className="p-btn p-btn--sm" onClick={() => onGo('reports')}>Report</button></header>
-      <div className="p-kpi"><strong className="num">{s.byRoom.size}</strong><span className="p-muted">rooms with a fall</span></div>
-      <ul className="p-rooms">
-        {rooms.slice(0, 6).map(([room, n]) => <li key={room}><span>Room {room}</span><i><b style={{ width: `${(n / maxRoom) * 100}%` }} /></i><strong className="num">{n}</strong></li>)}
-        {!rooms.length && <li className="p-muted">No falls yet today.</li>}
-      </ul>
-    </section>
-
-    <section className="p-card p-span-2">
-      <header className="p-card__head"><span>Fall heatmap · room × hour</span><span className="p-muted p-small">Darker = more falls</span></header>
-      <Heatmap falls={falls} upTo={hourNow} />
-    </section>
-
-    <section className="p-card">
-      <header className="p-card__head"><span>Keep families informed</span></header>
-      <p className="p-muted">Send a status update or fall notice to one family or everyone at once. It appears instantly in their portal.</p>
-      <div className="p-quick">
-        <button type="button" className="p-btn p-btn--block" onClick={() => onNotify('all')}><Icon name="users" size={16} />Message all families</button>
-        <button type="button" className="p-btn p-btn--block" onClick={() => onGo('families')}><Icon name="message" size={16} />Message history</button>
-      </div>
+    <section className="p-card p-span-3">
+      <header className="p-card__head"><span><Icon name="map" size={18} />Care home fall map · today</span><span className="p-muted p-small">Rooms glow by number of falls · click a room to see its incidents</span></header>
+      <CareMap falls={falls} residents={residents} onRoom={() => onGo('incidents')} />
     </section>
   </div>;
 }
@@ -287,20 +291,6 @@ function HourBars({ hours }: { hours: number[] }) {
     {Array.from({ length: 24 }, (_, h) => <i key={h} data-future={h >= hours.length ? 'true' : undefined}
       style={{ height: `${h < hours.length ? 6 + (hours[h] / max) * 94 : 6}%` }} title={`${String(h).padStart(2, '0')}:00 · ${hours[h] ?? 0} falls`} />)}
     <div className="p-hours__axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
-  </div>;
-}
-
-function Heatmap({ falls, upTo }: { falls: FallEvent[]; upTo: number }) {
-  const blocks = [0, 3, 6, 9, 12, 15, 18, 21];
-  const cell = (room: string, h: number) => falls.filter(f => f.room === room && Math.floor(new Date(f.at).getHours() / 3) * 3 === h).length;
-  const max = Math.max(1, ...ALL_ROOMS.flatMap(r => blocks.map(h => cell(r, h))));
-  return <div className="p-heat" role="table" aria-label="Falls by room and time of day">
-    <div role="row" className="p-heat__row p-heat__row--head"><span role="columnheader" />{blocks.map(h => <span role="columnheader" key={h}>{String(h).padStart(2, '0')}</span>)}</div>
-    {ALL_ROOMS.map(room => <div role="row" className="p-heat__row" key={room}>
-      <span role="rowheader">{room}</span>
-      {blocks.map(h => { const n = cell(room, h); return <span role="cell" key={h} className="p-heat__cell" data-future={h > upTo ? 'true' : undefined}
-        style={{ ['--a' as string]: n ? 0.25 + (n / max) * 0.75 : 0 }} title={`Room ${room}, ${h}:00–${h + 3}:00: ${n} falls`}>{n || ''}</span>; })}
-    </div>)}
   </div>;
 }
 
@@ -615,9 +605,8 @@ function Families({ residents, onNotify }: { residents: Resident[]; onNotify: (i
 function Detection() {
   const [mode, setMode] = useState<Mode>('live');
   return <div className="p-stack p-detection">
-    <div className="p-pagehead"><div><h2>Camera detection</h2><p className="p-muted">Run the on-device fall detector on a camera or recorded video.</p></div>
+    <div className="p-pagehead"><div><h2>CCTV</h2><p className="p-muted">Watch a live camera with fall detection, or upload a recorded clip to analyze.</p></div>
       <ModeTabs mode={mode} onChange={setMode} prefix="portal" label="Detection mode" /></div>
-    <ModelCard />
     <section role="tabpanel" id="portal-panel-live" aria-labelledby="portal-tab-live" hidden={mode !== 'live'}>{mode === 'live' && <LivePanel />}</section>
     <section role="tabpanel" id="portal-panel-video" aria-labelledby="portal-tab-video" hidden={mode !== 'video'}><UploadPanel /></section>
   </div>;
