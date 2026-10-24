@@ -5,7 +5,7 @@ import { LivePanel } from '../components/LivePanel';
 import { UploadPanel } from '../components/UploadPanel';
 import {
   acknowledgeFall, ago, ALL_ROOMS, bytesLabel, clock, dayStats, DETECTOR, DETECTOR_ID, duration, residentName,
-  responseSeconds, ROOMS, sendMessage, syncDetectorClips, useNow, useSimulation, useStore, wingLabel,
+  responseSeconds, sendMessage, syncDetectorClips, useNow, useSimulation, useStore, wingLabel,
   type FallEvent, type Resident, type Session,
 } from './data';
 import { useClipList } from '../hooks/useClips';
@@ -198,8 +198,6 @@ function Overview({ falls, residents, now, onClip, onAttend, onGo, onNotify }: {
 }) {
   const s = dayStats(falls);
   const name = (id: string) => residentName(residents, id);
-  const counts = { active: 0, resting: 0, away: 0, fall: 0 };
-  residents.forEach(r => counts[r.status]++);
   const rooms = [...s.byRoom].sort((a, b) => b[1] - a[1]);
   const maxRoom = Math.max(1, ...rooms.map(r => r[1]));
   const hourNow = new Date(now).getHours();
@@ -220,10 +218,10 @@ function Overview({ falls, residents, now, onClip, onAttend, onGo, onNotify }: {
       </ul>
     </section>
 
-    <section className="p-card p-card--dark p-span-2 p-livealerts">
+    <section className="p-card p-span-2 p-livealerts">
       <header className="p-card__head">
         <span><span className="p-live-dot p-live-dot--alert" />Live fall alerts</span>
-        <div className="p-seg p-seg--dark" role="tablist" aria-label="Alert filter">
+        <div className="p-seg" role="tablist" aria-label="Alert filter">
           <button type="button" role="tab" aria-selected={alertTab === 'open'} className="p-seg__item" data-on={alertTab === 'open' ? 'true' : undefined} onClick={() => setAlertTab('open')}>Open · {s.open}</button>
           <button type="button" role="tab" aria-selected={alertTab === 'all'} className="p-seg__item" data-on={alertTab === 'all' ? 'true' : undefined} onClick={() => setAlertTab('all')}>All today · {s.total}</button>
         </div>
@@ -238,27 +236,17 @@ function Overview({ falls, residents, now, onClip, onAttend, onGo, onNotify }: {
           <span className="p-alerts__state">{f.acknowledgedAt ? `Attended · ${duration(responseSeconds(f)!)}` : 'Waiting'}</span>
           <span className="p-alerts__conf num">{Math.round(f.confidence * 100)}%</span>
           <div className="p-alerts__actions">
-            <button type="button" className="p-btn p-btn--glass p-btn--sm" onClick={() => onClip(f)} aria-label={`Play clip, room ${f.room}`}><Icon name="play" size={14} />Clip</button>
+            <button type="button" className="p-btn p-btn--sm" onClick={() => onClip(f)} aria-label={`Play clip, room ${f.room}`}><Icon name="play" size={14} />Clip</button>
             {!f.acknowledgedAt
-              ? <button type="button" className="p-btn p-btn--lime p-btn--sm" onClick={() => onAttend(f)}>Respond</button>
-              : f.residentId !== DETECTOR_ID && <button type="button" className="p-btn p-btn--glass p-btn--sm" onClick={() => onNotify(f.residentId)}>Notify</button>}
+              ? <button type="button" className="p-btn p-btn--primary p-btn--sm" onClick={() => onAttend(f)}>Respond</button>
+              : f.residentId !== DETECTOR_ID && <button type="button" className="p-btn p-btn--sm" onClick={() => onNotify(f.residentId)}>Notify</button>}
           </div>
         </li>)}
-        {!alertList.length && <li className="p-empty p-empty--dark"><Icon name="check" />{alertTab === 'open' ? 'No open alerts. Everyone is safe.' : 'No falls today.'}</li>}
+        {!alertList.length && <li className="p-empty p-empty--inline"><Icon name="check" />{alertTab === 'open' ? 'No open alerts. Everyone is safe.' : 'No falls today.'}</li>}
       </ul>
     </section>
 
-    <section className="p-card">
-      <header className="p-card__head"><span>Residents monitored</span><button type="button" className="p-btn p-btn--sm" onClick={() => onGo('live')}>Live</button></header>
-      <div className="p-kpi"><strong className="num">{residents.length}</strong><span className="p-badge" data-tone="good">{ROOMS.length} rooms</span></div>
-      <div className="p-split">
-        {([['Active', counts.active, 'active'], ['Resting', counts.resting, 'resting'], ['Out of room', counts.away, 'away']] as const).map(([l, n, k]) =>
-          <div key={k} className="p-split__col"><span>{l}</span><strong className="num">{n}</strong><i data-status={k} /></div>)}
-      </div>
-      {counts.fall > 0 && <p className="p-inline-alert"><Icon name="alert" size={16} />{counts.fall} resident{counts.fall > 1 ? 's' : ''} currently on the floor</p>}
-    </section>
-
-    <section className="p-card">
+    <section className="p-card p-span-2">
       <header className="p-card__head"><span>Falls by room</span><button type="button" className="p-btn p-btn--sm" onClick={() => onGo('reports')}>Report</button></header>
       <div className="p-kpi"><strong className="num">{s.byRoom.size}</strong><span className="p-muted">rooms with a fall</span></div>
       <ul className="p-rooms">

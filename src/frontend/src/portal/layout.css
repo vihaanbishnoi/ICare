@@ -103,3 +103,21 @@ li[data-hot] .p-map__rankno { background: var(--p-accent); color: #fff; }
   .p-fab { right: 16px; bottom: 16px; } .p-dock { right: 16px; bottom: 88px; }
 }
 @media (prefers-reduced-motion: reduce) { .p-fab, .p-dock, .p-map__roomrect { animation: none; transition: none; } }
+
+/* live fall alerts: light card */
+.p-livealerts .p-card__head > span:first-child { color: var(--p-ink); }
+.p-livealerts .p-seg__item[data-on] { background: var(--p-dark); color: #fff; }
+.p-livealerts .p-alerts li { background: var(--p-soft); border: 1px solid transparent; color: var(--p-ink); }
+.p-livealerts .p-alerts li[data-open] { background: var(--p-accent-soft); border-color: color-mix(in srgb, var(--p-accent) 30%, transparent); box-shadow: inset 3px 0 0 var(--p-accent); }
+.p-livealerts .p-alerts__who small { color: var(--p-ink3); }
+.p-livealerts .p-alerts__room { background: var(--p-card); border: 1px solid var(--p-line); }
+.p-livealerts .p-alerts__room small { color: var(--p-ink3); }
+.p-livealerts li[data-open] .p-alerts__room { background: var(--p-accent); border-color: var(--p-accent); color: #fff; }
+.p-livealerts li[data-open] .p-alerts__room small { color: rgba(255,255,255,.85); }
+.p-livealerts .p-alerts__state { color: var(--p-good); background: var(--p-good-soft); border: 0; }
+.p-livealerts li[data-open] .p-alerts__state { color: #fff; background: var(--p-bad); }
+.p-livealerts .p-alerts__bar { background: var(--p-line); }
+.p-livealerts .p-alerts__bar i { background: var(--p-good); }
+.p-livealerts li[data-open] .p-alerts__bar i { background: var(--p-accent); }
+.p-livealerts .p-alerts--scroll { scrollbar-color: var(--p-line) transparent; }
+.p-empty--inline { display: flex; gap: 8px; align-items: center; justify-content: center; color: var(--p-good); background: transparent !important; }
