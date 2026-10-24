@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { DEMO_RESIDENTS, type Role, type Session } from './data';
 import { Icon, Logo } from './ui';
 
-const MANAGER = { email: 'manager@icare.demo', name: 'James Brown' };
+const MANAGER = { email: 'manager@icare.demo', name: 'Aayush' };
 
 export function Login({ onSignIn }: { onSignIn: (s: Session) => void }) {
   const [role, setRole] = useState<Role>('family');
