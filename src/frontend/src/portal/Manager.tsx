@@ -15,8 +15,21 @@ import { FallClip, Icon, Initials, Logo, Modal, StatusPill } from './ui';
 import { BigAlert, DayStrip, ModelCard, Trend } from './extras';
 import { dayLabel, fallsForDay, HISTORY_DAYS } from './data';
 import { useTheme } from '../lib/theme';
-import { fetchDailyLogs, fetchDailySummary } from '../api/client';
-import type { DailyLogEntry, DailySummaryResponse } from '../types';
+import {
+  fetchDailyLogs,
+  fetchDailySummary,
+  fetchScheduleStatus,
+  trigger10pmDispatch,
+  fetchCaretakerEmails,
+  sendChatMessage,
+} from '../api/client';
+import type {
+  DailyLogEntry,
+  DailySummaryResponse,
+  SchedulerStatusResponse,
+  CaretakerEmailRecord,
+  ChatMessage,
+} from '../types';
 
 type View = 'overview' | 'live' | 'incidents' | 'reports' | 'families' | 'detection';
 const NAV: { id: View; label: string; icon: string }[] = [
@@ -140,6 +153,8 @@ export function Manager({ session, onSignOut }: { session: Session; onSignOut: (
         {view === 'detection' && <Detection />}
       </main>
     </div>
+
+    <FacilityChatbot />
 
     {toasts[0] && !clip && !attend && (() => { const f = toasts[0]; return <BigAlert kicker="Fall detected"
       place={`Room ${f.room}`} detail={`${resident(f.residentId).name} · ${wingLabel(f.wing)}`}
@@ -415,6 +430,35 @@ function Reports({ falls: todayFalls, residents }: { falls: FallEvent[]; residen
   const [dummyLogs, setDummyLogs] = useState<DailyLogEntry[]>([]);
   const [copied, setCopied] = useState(false);
 
+  const [scheduleStatus, setScheduleStatus] = useState<SchedulerStatusResponse | null>(null);
+  const [caretakerEmails, setCaretakerEmails] = useState<CaretakerEmailRecord[]>([]);
+  const [dispatching, setDispatching] = useState(false);
+  const [dispatchNotice, setDispatchNotice] = useState<string | null>(null);
+  const [showEmails, setShowEmails] = useState(false);
+  const [viewEmail, setViewEmail] = useState<CaretakerEmailRecord | null>(null);
+
+  useEffect(() => {
+    fetchScheduleStatus().then(st => setScheduleStatus(st)).catch(() => {});
+    fetchCaretakerEmails().then(res => setCaretakerEmails(res.emails)).catch(() => {});
+  }, []);
+
+  async function handleTrigger10pm() {
+    setDispatching(true);
+    setDispatchNotice(null);
+    try {
+      const res = await trigger10pmDispatch('llama3.2:1b');
+      setDispatchNotice(`Dispatched 10:00 PM summary to ${res.emails_dispatched} caretakers and persisted report to SQLite database.`);
+      setSummary(res.summary);
+      setCaretakerEmails(res.emails);
+      setShowEmails(true);
+      fetchScheduleStatus().then(st => setScheduleStatus(st)).catch(() => {});
+    } catch (err: unknown) {
+      setDispatchNotice(`Dispatch failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setDispatching(false);
+    }
+  }
+
   async function handleSummarise() {
     setSummarising(true);
     setSummaryError(null);
@@ -468,6 +512,83 @@ function Reports({ falls: todayFalls, residents }: { falls: FallEvent[]; residen
         <button type="button" className="p-btn p-btn--primary" onClick={() => printReport(falls, residents, title)}><Icon name="report" size={16} />Download PDF</button>
       </div>
     </div>
+
+    <section className="p-card p-card--dispatch" aria-label="10 PM Automated Routine & Caretaker Emails">
+      <div className="p-dispatch-header">
+        <div>
+          <div className="p-schedule-badge">
+            <Icon name="clock" size={16} />
+            <span>Automated 10:00 PM Daily Routine</span>
+            <span className="p-badge" data-tone="good">Active</span>
+            <span className="p-badge" data-tone="info">SQLite Persisted</span>
+          </div>
+          <p className="p-muted p-small" style={{ margin: '4px 0 0' }}>
+            Runs everyday at 10:00 PM (22:00) · Saves summary to SQLite · Dispatches email reports to 5 care staff.
+            {scheduleStatus?.next_scheduled_run && <> · Next scheduled: <strong>{scheduleStatus.next_scheduled_run}</strong></>}
+          </p>
+        </div>
+        <div className="p-filters">
+          <button
+            type="button"
+            className="p-btn p-btn--primary"
+            onClick={handleTrigger10pm}
+            disabled={dispatching}
+            title="Execute 10:00 PM summary generation, SQLite save, and mock email dispatch"
+          >
+            <Icon name="mail" size={15} />
+            {dispatching ? 'Running 10 PM Dispatch...' : 'Run 10:00 PM Dispatch Now'}
+          </button>
+          {caretakerEmails.length > 0 && (
+            <button type="button" className="p-btn" onClick={() => setShowEmails(!showEmails)}>
+              <Icon name="report" size={15} />
+              {showEmails ? 'Hide Sent Emails' : `View Caretaker Emails (${caretakerEmails.length})`}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {dispatchNotice && (
+        <div className="p-ai-notice" style={{ marginTop: '10px' }}>
+          <Icon name="check" size={14} />
+          <span>{dispatchNotice}</span>
+        </div>
+      )}
+
+      {showEmails && caretakerEmails.length > 0 && (
+        <div className="p-emails-grid">
+          {caretakerEmails.map(em => (
+            <div key={em.email_id} className="p-email-card">
+              <div className="p-email-card__top">
+                <strong>{em.recipient_name}</strong>
+                <span className="p-badge" data-tone="good">Delivered</span>
+              </div>
+              <span className="p-email-card__role">{em.recipient_role} · <code>{em.recipient_email}</code></span>
+              <span className="p-muted p-small">Subject: {em.subject}</span>
+              <button type="button" className="p-btn p-btn--sm" onClick={() => setViewEmail(em)}>
+                View Full Email
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+
+    {viewEmail && (
+      <Modal title={viewEmail.subject} onClose={() => setViewEmail(null)} wide>
+        <div className="p-stack">
+          <div className="p-muted p-small">
+            To: <strong>{viewEmail.recipient_name}</strong> &lt;{viewEmail.recipient_email}&gt; ({viewEmail.recipient_role})
+            <br />Sent at: {viewEmail.sent_at_utc} · Status: <span className="p-badge" data-tone="good">{viewEmail.status}</span>
+          </div>
+          <pre className="p-email-card__preview" style={{ maxHeight: '360px', overflowY: 'auto' }}>
+            {viewEmail.body_text || viewEmail.body_preview}
+          </pre>
+          <div className="p-modal__foot">
+            <button type="button" className="p-btn p-btn--primary" onClick={() => setViewEmail(null)}>Close</button>
+          </div>
+        </div>
+      </Modal>
+    )}
 
     {summarising && <section className="p-card p-card--ai-loading">
       <div className="p-ai-loading">
@@ -735,3 +856,176 @@ function NotifyDialog({ residents, initial, preset, from, onClose }: { residents
     </form>}
   </Modal>;
 }
+
+/* ---------------- Facility Grounded Chatbot Widget ---------------- */
+
+export function FacilityChatbot() {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState<Array<{
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    isShortCircuit?: boolean;
+    sources?: string[];
+  }>>([
+    {
+      id: 'welcome',
+      role: 'assistant',
+      content: 'Hello! I am the ICare Facility AI Assistant.\n\nI answer questions strictly using our facility SQLite database (saved daily summaries, monitoring logs, and caretaker emails).\n\nIf you ask about something not in our records, I will short-circuit to "I am not sure."',
+    }
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const msgsEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      msgsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, open]);
+
+  async function handleSend(questionText?: string) {
+    const q = (questionText || input).trim();
+    if (!q || loading) return;
+    setInput('');
+
+    const userMsg = { id: `u_${Date.now()}`, role: 'user' as const, content: q };
+    setMessages(prev => [...prev, userMsg]);
+    setLoading(true);
+
+    try {
+      const historyPayload: ChatMessage[] = messages.slice(-4).map(m => ({ role: m.role, content: m.content }));
+      const res = await sendChatMessage(q, historyPayload, 'llama3.2:1b');
+      const isShort = res.reply.trim() === 'I am not sure.' || res.reply.toLowerCase().includes('not sure');
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `a_${Date.now()}`,
+          role: 'assistant',
+          content: isShort ? 'I am not sure.' : res.reply,
+          isShortCircuit: isShort,
+          sources: res.sources,
+        }
+      ]);
+    } catch {
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `a_err_${Date.now()}`,
+          role: 'assistant',
+          content: 'I am not sure.',
+          isShortCircuit: true,
+        }
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const chips = [
+    'Who had a fall today?',
+    'What was the average response time?',
+    'Which residents are high risk?',
+    'What was sent in the 10pm emails?',
+    'What is the capital of France?',
+  ];
+
+  return (
+    <>
+      <button
+        type="button"
+        className="p-chatbot-fab"
+        onClick={() => setOpen(!open)}
+        title="Open ICare Facility AI Chatbot"
+      >
+        <Icon name="bot" size={20} />
+        <span>Ask AI Assistant</span>
+      </button>
+
+      {open && (
+        <aside className="p-chatbot-window" aria-label="ICare Facility AI Assistant">
+          <header className="p-chatbot-head">
+            <div>
+              <h3><Icon name="bot" size={18} />Facility AI Assistant</h3>
+              <span>Grounded in SQLite Database · Ollama llama3.2:1b</span>
+            </div>
+            <button type="button" className="p-iconbtn" onClick={() => setOpen(false)} aria-label="Close Assistant">
+              <Icon name="close" size={16} />
+            </button>
+          </header>
+
+          <div className="p-chatbot-subhead">
+            Answers strictly from recorded facility data. Short-circuits to &ldquo;I am not sure.&rdquo; if information is absent.
+          </div>
+
+          <div className="p-chatbot-msgs">
+            {messages.map(m => (
+              <div key={m.id} className={`p-chat-msg p-chat-msg--${m.role}`}>
+                <div className="p-chat-bubble">
+                  {m.content}
+                </div>
+                {m.isShortCircuit && (
+                  <span className="p-chat-shortcircuit">
+                    <Icon name="alert" size={12} />
+                    Short-circuit (Not in database)
+                  </span>
+                )}
+                {m.sources && m.sources.length > 0 && !m.isShortCircuit && (
+                  <span className="p-chat-source-tag">Sources: {m.sources.join(', ')}</span>
+                )}
+              </div>
+            ))}
+            {loading && (
+              <div className="p-chat-msg p-chat-msg--assistant">
+                <div className="p-chat-bubble" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="p-ai-spinner" style={{ width: '16px', height: '16px' }} />
+                  <span>Searching facility database with llama3.2:1b...</span>
+                </div>
+              </div>
+            )}
+            <div ref={msgsEndRef} />
+          </div>
+
+          <div className="p-chat-chips">
+            {chips.map(chip => (
+              <button
+                key={chip}
+                type="button"
+                className="p-chat-chip"
+                onClick={() => handleSend(chip)}
+                disabled={loading}
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+
+          <form
+            className="p-chat-input-bar"
+            onSubmit={e => {
+              e.preventDefault();
+              handleSend();
+            }}
+          >
+            <input
+              type="text"
+              className="p-chat-input"
+              placeholder="Ask about falls, residents, response times..."
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              disabled={loading}
+            />
+            <button
+              type="submit"
+              className="p-btn p-btn--primary p-btn--sm"
+              disabled={loading || !input.trim()}
+            >
+              <Icon name="send" size={14} />
+            </button>
+          </form>
+        </aside>
+      )}
+    </>
+  );
+}
+

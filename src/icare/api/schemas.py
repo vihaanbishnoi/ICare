@@ -221,3 +221,65 @@ class DailySummaryResponse(BaseModel):
     notice: str | None = None
 
 
+class CaretakerEmailRecord(BaseModel):
+    email_id: str
+    summary_id: str | None = None
+    recipient_name: str
+    recipient_email: str
+    recipient_role: str
+    subject: str
+    body_preview: str | None = None
+    body_text: str | None = None
+    sent_at_utc: str
+    status: str
+
+
+class CaretakersListResponse(BaseModel):
+    total_emails: int
+    emails: list[CaretakerEmailRecord]
+
+
+class SchedulerStatusResponse(BaseModel):
+    scheduled_time: str
+    target_hour: int
+    is_active: bool
+    next_scheduled_run: str
+    last_run_at: str | None = None
+    last_run_status: str | None = None
+    last_run_email_count: int = 0
+    latest_saved_summary: dict[str, Any] | None = None
+    caretakers: list[dict[str, str]]
+
+
+class Trigger10pmResponse(BaseModel):
+    status: str
+    summary_id: str
+    date_str: str
+    generated_at_utc: str
+    model: str
+    summary: dict[str, Any]
+    emails_dispatched: int
+    emails: list[dict[str, Any]]
+
+
+class ChatMessage(BaseModel):
+    role: Literal['user', 'assistant', 'system']
+    content: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    history: list[ChatMessage] = []
+    model: str = "llama3.2:1b"
+
+
+class ChatResponse(BaseModel):
+    question: str
+    reply: str
+    model: str
+    grounded: bool
+    notice: str | None = None
+    sources: list[str] = []
+
+
+

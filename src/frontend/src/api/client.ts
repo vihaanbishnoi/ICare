@@ -2,7 +2,11 @@
  * API client — all calls use relative /api/v1 URLs (same-origin requirement).
  * Never construct absolute URLs here; the cookie is SameSite=strict.
  */
-import type { Clip, ClipList, Job, Result, LiveSession, LiveFrame, LiveHistory, DailyLogsResponse, DailySummaryResponse } from '../types';
+import type {
+  Clip, ClipList, Job, Result, LiveSession, LiveFrame, LiveHistory,
+  DailyLogsResponse, DailySummaryResponse, CaretakersListResponse,
+  SchedulerStatusResponse, Trigger10pmResponse, ChatMessage, ChatResponse
+} from '../types';
 
 const BASE = '/api/v1';
 
@@ -91,4 +95,38 @@ export function fetchDailySummary(model = 'llama3.2:1b', signal?: AbortSignal): 
     signal,
   });
 }
+
+/** GET /api/v1/reports/schedule-status */
+export function fetchScheduleStatus(signal?: AbortSignal): Promise<SchedulerStatusResponse> {
+  return apiFetch<SchedulerStatusResponse>('/reports/schedule-status', { signal });
+}
+
+/** POST /api/v1/reports/trigger-10pm-dispatch */
+export function trigger10pmDispatch(model = 'llama3.2:1b', signal?: AbortSignal): Promise<Trigger10pmResponse> {
+  return apiFetch<Trigger10pmResponse>(`/reports/trigger-10pm-dispatch?model=${encodeURIComponent(model)}`, {
+    method: 'POST',
+    signal,
+  });
+}
+
+/** GET /api/v1/reports/caretaker-emails */
+export function fetchCaretakerEmails(limit = 50, signal?: AbortSignal): Promise<CaretakersListResponse> {
+  return apiFetch<CaretakersListResponse>(`/reports/caretaker-emails?limit=${encodeURIComponent(limit)}`, { signal });
+}
+
+/** POST /api/v1/chat */
+export function sendChatMessage(
+  message: string,
+  history: ChatMessage[] = [],
+  model = 'llama3.2:1b',
+  signal?: AbortSignal,
+): Promise<ChatResponse> {
+  return apiFetch<ChatResponse>('/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, history, model }),
+    signal,
+  });
+}
+
 

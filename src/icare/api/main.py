@@ -29,6 +29,19 @@ from icare.api.engine import Engine, load_real_engine
 from icare.api.results import job_url
 from icare.api.schemas import Clip, ClipList, Incident, Job
 from icare.api.schemas import DailyLogsResponse, DailySummaryResponse
+from icare.api.schemas import (
+    CaretakersListResponse,
+    ChatRequest,
+    ChatResponse,
+    SchedulerStatusResponse,
+    Trigger10pmResponse,
+)
+from icare.api.chatbot import ask_facility_chatbot
+from icare.api.dispatch import (
+    get_schedule_status,
+    run_daily_10pm_routine,
+    start_10pm_daily_scheduler,
+)
 from icare.api.schemas import LiveFrame, LiveHistoryResponse, LiveSession
 from icare.api.store import ACTIVE_STATES, Store, utc_now
 from icare.api.summary import load_daily_logs, summarize_daily_logs
@@ -92,9 +105,13 @@ def create_app(settings: Settings | None = None, engine: Any = _NOT_LOADED) -> F
                 except Exception:
                     log.exception("Scheduled job cleanup failed")
         cleanup_task = asyncio.create_task(cleanup_loop())
+        scheduler_task = asyncio.create_task(start_10pm_daily_scheduler(state.store))
         try:
             yield
         finally:
+            scheduler_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await scheduler_task
             cleanup_task.cancel()
             with suppress(asyncio.CancelledError):
                 await cleanup_task
@@ -499,7 +516,7 @@ def delete_clip(request: Request, clip: dict = Depends(owned_clip)) -> Response:
     return Response(status_code=204)
 
 
-# ---------- daily logs & summary ----------
+# ---------- daily logs, summaries, caretaker emails & chatbot ----------
 
 @router.get("/reports/daily-logs", response_model=DailyLogsResponse)
 def get_daily_logs() -> dict:
@@ -510,7 +527,72 @@ def get_daily_logs() -> dict:
 
 @router.post("/reports/summarize", response_model=DailySummaryResponse)
 @router.get("/reports/summarize", response_model=DailySummaryResponse)
-def get_daily_summary(model: str = "llama3.2:1b") -> dict:
-    """Generate an AI summary report from local dummy logs using Ollama llama3.2:1b."""
-    return summarize_daily_logs(model=model)
+def get_daily_summary(request: Request, model: str = "llama3.2:1b") -> dict:
+    """Generate an AI summary report from local dummy logs using Ollama llama3.2:1b and persist to SQLite."""
+    summary_data = summarize_daily_logs(model=model)
+    if hasattr(request.app.state, "store"):
+        # Save into SQLite daily_summaries
+        structured = summary_data.get("structured_summary") or {}
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        summary_id = f"sum_{today_str.replace('-', '')}_{datetime.now().strftime('%H%M%S')}"
+        request.app.state.store.save_daily_summary(
+            summary_id=summary_id,
+            date_str=today_str,
+            model=model,
+            status=summary_data.get("status", "success"),
+            executive_summary=structured.get("executive_summary") or summary_data.get("summary", ""),
+            structured_json=json.dumps(structured),
+            raw_markdown=summary_data.get("summary", ""),
+            log_count=summary_data.get("log_count", 0),
+        )
+    return summary_data
+
+
+@router.get("/reports/schedule-status", response_model=SchedulerStatusResponse)
+def get_daily_schedule_status(request: Request) -> dict:
+    """Get status of the automated 10:00 PM summary & email dispatch schedule."""
+    store = getattr(request.app.state, "store", None)
+    return get_schedule_status(store)
+
+
+@router.post("/reports/trigger-10pm-dispatch", response_model=Trigger10pmResponse)
+def trigger_10pm_dispatch(request: Request, model: str = "llama3.2:1b") -> dict:
+    """Trigger the 10:00 PM routine on demand: generates summary, saves to SQLite, sends mock emails to caretakers."""
+    store = getattr(request.app.state, "store", None)
+    if store is None:
+        raise ApiError(500, "store_unavailable", "Database store is not initialized.")
+    return run_daily_10pm_routine(store=store, force=True, model=model)
+
+
+@router.get("/reports/caretaker-emails", response_model=CaretakersListResponse)
+def get_caretaker_emails(request: Request, limit: int = 50) -> dict:
+    """List mock emails dispatched to caretakers saved in SQLite."""
+    store = getattr(request.app.state, "store", None)
+    if store is None:
+        return {"total_emails": 0, "emails": []}
+    emails = store.list_caretaker_emails(limit=limit)
+    return {"total_emails": len(emails), "emails": emails}
+
+
+@router.get("/reports/saved-summaries")
+def get_saved_summaries(request: Request, limit: int = 30) -> list[dict]:
+    """List historical daily summaries saved in SQLite."""
+    store = getattr(request.app.state, "store", None)
+    if store is None:
+        return []
+    return store.list_daily_summaries(limit=limit)
+
+
+@router.post("/chat", response_model=ChatResponse)
+def chat_with_assistant(request: Request, payload: ChatRequest) -> dict:
+    """Chatbot strictly grounded in SQLite database summaries and logs with 'I am not sure.' short-circuit."""
+    store = getattr(request.app.state, "store", None)
+    history_dicts = [{"role": m.role, "content": m.content} for m in payload.history]
+    return ask_facility_chatbot(
+        store=store,
+        question=payload.message,
+        history=history_dicts,
+        model=payload.model,
+    )
+
 

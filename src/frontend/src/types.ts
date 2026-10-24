@@ -186,4 +186,67 @@ export interface DailySummaryResponse {
   notice?: string | null;
 }
 
+export interface CaretakerEmailRecord {
+  email_id: string;
+  summary_id?: string | null;
+  recipient_name: string;
+  recipient_email: string;
+  recipient_role: string;
+  subject: string;
+  body_preview?: string | null;
+  body_text?: string | null;
+  sent_at_utc: string;
+  status: string;
+}
+
+export interface CaretakersListResponse {
+  total_emails: number;
+  emails: CaretakerEmailRecord[];
+}
+
+export interface SchedulerStatusResponse {
+  scheduled_time: string;
+  target_hour: number;
+  is_active: boolean;
+  next_scheduled_run: string;
+  last_run_at?: string | null;
+  last_run_status?: string | null;
+  last_run_email_count: number;
+  latest_saved_summary?: {
+    summary_id: string;
+    date_str: string;
+    generated_at_utc: string;
+    model: string;
+    status: string;
+    sent_email_count: number;
+  } | null;
+  caretakers: { name: string; email: string; role: string }[];
+}
+
+export interface Trigger10pmResponse {
+  status: string;
+  summary_id: string;
+  date_str: string;
+  generated_at_utc: string;
+  model: string;
+  summary: DailySummaryResponse;
+  emails_dispatched: number;
+  emails: CaretakerEmailRecord[];
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
+export interface ChatResponse {
+  question: string;
+  reply: string;
+  model: string;
+  grounded: boolean;
+  notice?: string | null;
+  sources: string[];
+}
+
+
 

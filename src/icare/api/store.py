@@ -73,6 +73,31 @@ CREATE TABLE IF NOT EXISTS live_incidents (
     detected_at_seconds REAL NOT NULL, confidence REAL NOT NULL, created_at_utc TEXT NOT NULL,
     track_id INTEGER
 );
+CREATE TABLE IF NOT EXISTS daily_summaries (
+    summary_id TEXT PRIMARY KEY,
+    date_str TEXT NOT NULL,
+    generated_at_utc TEXT NOT NULL,
+    model TEXT NOT NULL,
+    status TEXT NOT NULL,
+    executive_summary TEXT NOT NULL,
+    structured_json TEXT NOT NULL,
+    raw_markdown TEXT NOT NULL,
+    log_count INTEGER NOT NULL,
+    sent_email_count INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS daily_summaries_date ON daily_summaries(date_str);
+CREATE TABLE IF NOT EXISTS caretaker_emails (
+    email_id TEXT PRIMARY KEY,
+    summary_id TEXT,
+    recipient_name TEXT NOT NULL,
+    recipient_email TEXT NOT NULL,
+    recipient_role TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    body_text TEXT NOT NULL,
+    sent_at_utc TEXT NOT NULL,
+    status TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS caretaker_emails_summary ON caretaker_emails(summary_id);
 """
 
 
@@ -334,3 +359,78 @@ class Store:
         """A live clip still pending after a restart can never be completed."""
         self._write("UPDATE clips SET status = 'failed', "
                     "error_message = 'The server restarted before the clip was saved.' WHERE status = 'pending'")
+
+    # ---------- Daily summaries & caretaker emails ----------
+
+    def save_daily_summary(
+        self,
+        summary_id: str,
+        date_str: str,
+        model: str,
+        status: str,
+        executive_summary: str,
+        structured_json: str,
+        raw_markdown: str,
+        log_count: int,
+        sent_email_count: int = 0,
+        generated_at_utc: str | None = None,
+    ) -> str:
+        gen_time = generated_at_utc or utc_now()
+        self._write(
+            "INSERT INTO daily_summaries (summary_id, date_str, generated_at_utc, model, status, "
+            "executive_summary, structured_json, raw_markdown, log_count, sent_email_count) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(summary_id) DO UPDATE SET "
+            "generated_at_utc=excluded.generated_at_utc, status=excluded.status, "
+            "executive_summary=excluded.executive_summary, structured_json=excluded.structured_json, "
+            "raw_markdown=excluded.raw_markdown, log_count=excluded.log_count, "
+            "sent_email_count=excluded.sent_email_count",
+            (summary_id, date_str, gen_time, model, status, executive_summary,
+             structured_json, raw_markdown, log_count, sent_email_count)
+        )
+        return summary_id
+
+    def update_summary_email_count(self, summary_id: str, sent_email_count: int) -> None:
+        self._write("UPDATE daily_summaries SET sent_email_count = ? WHERE summary_id = ?",
+                    (sent_email_count, summary_id))
+
+    def get_daily_summary(self, summary_id: str) -> dict[str, Any] | None:
+        rows = self._read("SELECT * FROM daily_summaries WHERE summary_id = ?", (summary_id,))
+        return rows[0] if rows else None
+
+    def get_latest_daily_summary(self) -> dict[str, Any] | None:
+        rows = self._read("SELECT * FROM daily_summaries ORDER BY generated_at_utc DESC LIMIT 1")
+        return rows[0] if rows else None
+
+    def list_daily_summaries(self, limit: int = 30) -> list[dict[str, Any]]:
+        return self._read("SELECT * FROM daily_summaries ORDER BY generated_at_utc DESC LIMIT ?", (limit,))
+
+    def save_caretaker_email(
+        self,
+        email_id: str,
+        summary_id: str,
+        recipient_name: str,
+        recipient_email: str,
+        recipient_role: str,
+        subject: str,
+        body_text: str,
+        sent_at_utc: str | None = None,
+        status: str = "delivered",
+    ) -> str:
+        sent_time = sent_at_utc or utc_now()
+        self._write(
+            "INSERT INTO caretaker_emails (email_id, summary_id, recipient_name, recipient_email, "
+            "recipient_role, subject, body_text, sent_at_utc, status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (email_id, summary_id, recipient_name, recipient_email, recipient_role, subject, body_text, sent_time, status)
+        )
+        return email_id
+
+    def list_caretaker_emails(self, summary_id: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+        if summary_id:
+            return self._read(
+                "SELECT * FROM caretaker_emails WHERE summary_id = ? ORDER BY sent_at_utc DESC LIMIT ?",
+                (summary_id, limit)
+            )
+        return self._read("SELECT * FROM caretaker_emails ORDER BY sent_at_utc DESC LIMIT ?", (limit,))
+
